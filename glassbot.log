@@ -62922,3 +62922,383 @@ glassbot.exceptions.LLMError: LLM call failed: Cloudflare Workers AI connectivit
 2026-07-09 01:13:50,033 | INFO | httpx | HTTP Request: GET http://localhost:8585/api/v1/search/query?q=compare+customer+demand+production+output&index=table_search_index&size=5 "HTTP/1.1 200 OK"
 2026-07-09 01:13:54,379 | INFO | httpx | HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/dfb9d63df5777b67de01527fcf37ce62/ai/v1/chat/completions "HTTP/1.1 200 OK"
 2026-07-09 01:13:57,532 | INFO | httpx | HTTP Request: POST https://api.cloudflare.com/client/v4/accounts/dfb9d63df5777b67de01527fcf37ce62/ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-10 13:35:53,480 | INFO | glassbot.propagation_test | propagation check
+2026-07-10 13:35:53,480 | INFO | glassbot.propagation_test | propagation check
+2026-07-10 13:35:53,480 | INFO | glassbot.propagation_test | propagation check
+2026-07-10 13:35:53,480 | INFO | glassbot.propagation_test | propagation check
+2026-07-10 13:35:53,480 | INFO | glassbot.propagation_test | propagation check
+2026-07-10 13:35:53,563 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'completely unknown topic' — using hardcoded fallback tables
+2026-07-10 13:35:53,563 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'completely unknown topic' — using hardcoded fallback tables
+2026-07-10 13:35:53,563 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'completely unknown topic' — using hardcoded fallback tables
+2026-07-10 13:35:53,563 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'completely unknown topic' — using hardcoded fallback tables
+2026-07-10 13:35:53,563 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'completely unknown topic' — using hardcoded fallback tables
+2026-07-10 13:35:53,567 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'mystery question' — using hardcoded fallback tables
+2026-07-10 13:35:53,567 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'mystery question' — using hardcoded fallback tables
+2026-07-10 13:35:53,567 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'mystery question' — using hardcoded fallback tables
+2026-07-10 13:35:53,567 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'mystery question' — using hardcoded fallback tables
+2026-07-10 13:35:53,567 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'mystery question' — using hardcoded fallback tables
+2026-07-10 13:35:53,571 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'question' — using hardcoded fallback tables
+2026-07-10 13:35:53,571 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'question' — using hardcoded fallback tables
+2026-07-10 13:35:53,571 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'question' — using hardcoded fallback tables
+2026-07-10 13:35:53,571 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'question' — using hardcoded fallback tables
+2026-07-10 13:35:53,571 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'question' — using hardcoded fallback tables
+2026-07-10 13:35:53,576 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'nothing found' — using hardcoded fallback tables
+2026-07-10 13:35:53,576 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'nothing found' — using hardcoded fallback tables
+2026-07-10 13:35:53,576 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'nothing found' — using hardcoded fallback tables
+2026-07-10 13:35:53,576 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'nothing found' — using hardcoded fallback tables
+2026-07-10 13:35:53,576 | WARNING | chatbot.metadata_service | No OpenMetadata results for 'nothing found' — using hardcoded fallback tables
+2026-07-10 13:35:53,578 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: Connection refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: Connection refused
+2026-07-10 13:35:53,578 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: Connection refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: Connection refused
+2026-07-10 13:35:53,578 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: Connection refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: Connection refused
+2026-07-10 13:35:53,578 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: Connection refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: Connection refused
+2026-07-10 13:35:53,578 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: Connection refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: Connection refused
+2026-07-10 13:35:53,590 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: Timed out
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.TimeoutException: Timed out
+2026-07-10 13:35:53,590 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: Timed out
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.TimeoutException: Timed out
+2026-07-10 13:35:53,590 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: Timed out
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.TimeoutException: Timed out
+2026-07-10 13:35:53,590 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: Timed out
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.TimeoutException: Timed out
+2026-07-10 13:35:53,590 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: Timed out
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.TimeoutException: Timed out
+2026-07-10 13:35:53,594 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: refused
+2026-07-10 13:35:53,594 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: refused
+2026-07-10 13:35:53,594 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: refused
+2026-07-10 13:35:53,594 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: refused
+2026-07-10 13:35:53,594 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: refused
+2026-07-10 13:35:53,598 | ERROR | chatbot.metadata_service | OpenMetadata HTTP error 500: Server error
+2026-07-10 13:35:53,598 | ERROR | chatbot.metadata_service | OpenMetadata HTTP error 500: Server error
+2026-07-10 13:35:53,598 | ERROR | chatbot.metadata_service | OpenMetadata HTTP error 500: Server error
+2026-07-10 13:35:53,598 | ERROR | chatbot.metadata_service | OpenMetadata HTTP error 500: Server error
+2026-07-10 13:35:53,598 | ERROR | chatbot.metadata_service | OpenMetadata HTTP error 500: Server error
+2026-07-10 13:35:53,601 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: refused
+2026-07-10 13:35:53,601 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: refused
+2026-07-10 13:35:53,601 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: refused
+2026-07-10 13:35:53,601 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: refused
+2026-07-10 13:35:53,601 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: refused
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: refused
+2026-07-10 13:35:53,604 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: original error
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: original error
+2026-07-10 13:35:53,604 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: original error
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: original error
+2026-07-10 13:35:53,604 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: original error
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: original error
+2026-07-10 13:35:53,604 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: original error
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: original error
+2026-07-10 13:35:53,604 | ERROR | chatbot.metadata_service | OpenMetadata connectivity error: original error
+Traceback (most recent call last):
+  File "/home/rohitvishwakarma/projects/polaris-poc/chatbot/metadata_service.py", line 250, in _search
+    response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+httpx.ConnectError: original error
