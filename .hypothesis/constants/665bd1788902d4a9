@@ -1,0 +1,4 @@
+# file: /home/rohitvishwakarma/projects/polaris-poc/glassbot/.venv/bin/pytest
+# hypothesis_version: 6.135.1
+
+['.exe', '__main__']

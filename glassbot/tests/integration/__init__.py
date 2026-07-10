@@ -1,0 +1,1 @@
+# GlassBot integration tests

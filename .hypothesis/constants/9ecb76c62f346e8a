@@ -1,0 +1,4 @@
+# file: /home/rohitvishwakarma/projects/polaris-poc/glassbot/utils/helpers.py
+# hypothesis_version: 6.135.1
+
+[1000.0, 4000, ',', ':', 'cl100k_base', 'gpt-4o', 'last']

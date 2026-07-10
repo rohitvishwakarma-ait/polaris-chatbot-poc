@@ -1,0 +1,4 @@
+# file: /home/rohitvishwakarma/projects/polaris-poc/glassbot/utils/logger.py
+# hypothesis_version: 6.135.1
+
+['INFO', 'LOG_FILE', 'LOG_LEVEL', 'config', 'glassbot.log', 'utf-8']

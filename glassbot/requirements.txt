@@ -1,0 +1,38 @@
+# GlassBot dependencies — all versions pinned for reproducible builds
+
+# Web UI
+streamlit==1.45.1
+
+# LLM orchestration
+langchain==0.3.25
+langchain-core==0.3.65
+langchain-community==0.3.24
+langgraph==0.4.8
+
+# LLM providers
+openai==1.86.0
+anthropic==0.52.0
+
+# HTTP client
+httpx==0.28.1
+
+# Database — Trino connector
+trino==0.329.0
+
+# SQL parsing / validation
+sqlparse==0.5.3
+
+# Configuration
+python-dotenv==1.1.0
+pydantic-settings==2.9.1
+
+# Token counting
+tiktoken==0.9.0
+
+# Testing
+hypothesis==6.135.1
+pytest==8.3.5
+pytest-mock==3.14.0
+
+# Data handling (for helpers.py rows_to_dataframe)
+pandas==2.2.3

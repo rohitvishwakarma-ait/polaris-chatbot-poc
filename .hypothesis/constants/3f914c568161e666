@@ -1,0 +1,4 @@
+# file: /home/rohitvishwakarma/projects/polaris-poc/glassbot/chatbot/metadata_service.py
+# hypothesis_version: 6.135.1
+
+[10.0, '/', '/api/v1/search/query', 'Authorization', 'Content-Type', '_source', 'application/json', 'columns', 'dataType', 'description', 'fullyQualifiedName', 'hits', 'index', 'name', 'q', 'size', 'table_search_index', 'tagFQN', 'tags']
