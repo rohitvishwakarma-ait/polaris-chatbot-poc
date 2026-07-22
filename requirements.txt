@@ -36,3 +36,7 @@ pytest-mock==3.14.0
 
 # Data handling (for helpers.py rows_to_dataframe)
 pandas==2.2.3
+
+# Arrow serialization — pinned to 17.x because pyarrow 25.0.0 causes
+# segfaults in Streamlit's Arrow IPC serialization on repeated st.rerun() cycles
+pyarrow>=14.0.1,<18

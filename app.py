@@ -50,7 +50,7 @@ try:
     from config import Config
     from exceptions import ConfigurationError
     from chatbot.agent import build_agent, run_agent
-    from utils.helpers import rows_to_dataframe, format_execution_time
+    from utils.helpers import format_execution_time
 except Exception as _import_exc:
     _CONFIG_ERROR = str(_import_exc)
     # Define a stub so the rest of the file can reference ConfigurationError
@@ -105,13 +105,15 @@ def _render_assistant_message(message: dict) -> None:
     - ``message["content"]`` as markdown (natural language summary or error text)
     - Optional SQL expander (``message["sql"]``)
     - Optional metadata expander (``message["metadata_summary"]``)
-    - Optional query result dataframe + row count + execution time
-      (``message["query_result"]``)
+    - Optional query result table + row count + execution time
+      (``message["rows"]``, ``message["row_count"]``, etc.)
     - Error box if ``message["error"]`` is truthy
 
     Args:
         message: A dict with keys ``role``, ``content``, and optionally
-            ``sql``, ``metadata_summary``, ``query_result``, ``error``.
+            ``sql``, ``metadata_summary``, ``rows``, ``row_count``,
+            ``execution_time_ms``, ``truncated``, ``truncation_limit``,
+            ``error``.
     """
     if message.get("error"):
         st.error(message["content"])
@@ -129,20 +131,21 @@ def _render_assistant_message(message: dict) -> None:
         with st.expander("Metadata Used"):
             st.text(metadata_summary)
 
-    query_result = message.get("query_result")
-    if query_result is not None:
-        df = rows_to_dataframe(query_result.rows)
+    rows = message.get("rows")
+    if rows:
+        import pandas as pd
+        df = pd.DataFrame(rows)
         st.dataframe(df)
         col1, col2 = st.columns(2)
         with col1:
-            st.caption(f"Rows returned: **{query_result.row_count}**")
+            st.caption(f"Rows returned: **{message.get('row_count', 0)}**")
         with col2:
             st.caption(
-                f"Execution time: **{format_execution_time(query_result.execution_time_ms)}**"
+                f"Execution time: **{format_execution_time(message.get('execution_time_ms', 0.0))}**"
             )
-        if query_result.truncated:
+        if message.get("truncated"):
             st.info(
-                f"⚠️ Result truncated to {query_result.truncation_limit} rows. "
+                f"⚠️ Result truncated to {message.get('truncation_limit')} rows. "
                 "Refine your query to see more specific data."
             )
 
@@ -155,12 +158,18 @@ def _render_assistant_message(message: dict) -> None:
 def _state_to_assistant_message(state: dict) -> dict:
     """Convert a final ``AgentState`` dict into a chat message dict for storage.
 
+    Stores only plain-Python-serializable data (strings, ints, floats, lists
+    of dicts) in session state.  Avoids storing pandas DataFrames or custom
+    dataclasses which trigger pyarrow serialization on every st.rerun() and
+    can cause segfaults with pyarrow 25.
+
     Args:
         state: The ``AgentState`` dict returned by :func:`run_agent`.
 
     Returns:
         A dict with keys ``role``, ``content``, and optionally
-        ``sql``, ``metadata_summary``, ``query_result``, ``error``.
+        ``sql``, ``metadata_summary``, ``rows``, ``row_count``,
+        ``execution_time_ms``, ``truncated``, ``truncation_limit``, ``error``.
     """
     error = state.get("error")
     if error:
@@ -184,7 +193,12 @@ def _state_to_assistant_message(state: dict) -> dict:
     if metadata:
         msg["metadata_summary"] = _build_metadata_summary(metadata)
     if query_result is not None:
-        msg["query_result"] = query_result
+        # Store raw rows as plain list[dict] — no DataFrame, no pyarrow
+        msg["rows"] = query_result.rows
+        msg["row_count"] = query_result.row_count
+        msg["execution_time_ms"] = query_result.execution_time_ms
+        msg["truncated"] = query_result.truncated
+        msg["truncation_limit"] = query_result.truncation_limit
 
     return msg
 

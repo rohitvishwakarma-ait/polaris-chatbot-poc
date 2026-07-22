@@ -58,7 +58,7 @@ Table 3: mongodb.trino_glassbottle.machine_sensor_logs
 Description: Real-time machine sensor logs from glass bottle production equipment
 Columns:
   - machineid (varchar): Machine identifier
-  - productionid (varchar): Associated production order ID
+  - productionid (varchar): Associated production order number (e.g. "PO1008") — matches production_orders.order_number
   - temperature (bigint): Machine temperature reading
   - pressure (bigint): Machine pressure reading
   - speed (bigint): Machine speed reading
@@ -131,8 +131,10 @@ TYPE CASTING RULES — critical for avoiding errors:
    - To join Redis machine with production_orders: ON rm._key = 'machine:' || po.machine_id
    - To join Redis production with production_orders: ON rp._key = 'production:' || po.order_number
    - Do NOT join Redis dashboard or shift tables with order tables — they use fixed keys like 'dashboard:summary'
-11. mongodb productionid is varchar. To join with postgres production_id (integer):
-    CAST(msl.productionid AS integer) = po.production_id  OR  po.production_id = CAST(msl.productionid AS integer)
+11. mongodb machine_sensor_logs.productionid is varchar containing order numbers like "PO1008".
+    To join with production_orders, match on order_number (also varchar), NOT production_id:
+    - CORRECT: msl.productionid = po.order_number
+    - WRONG:   CAST(msl.productionid AS integer) = po.production_id  (values like 'PO1008' cannot be cast to integer)
 """
 
 # ---------------------------------------------------------------------------

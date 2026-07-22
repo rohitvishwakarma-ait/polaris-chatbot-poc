@@ -25,7 +25,6 @@ import functools
 from typing import TypedDict
 
 from langchain_core.messages import BaseMessage
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
 from chatbot.executor import Executor
@@ -463,9 +462,13 @@ def build_agent(
     # respond is the terminal node — route to END
     graph.add_edge("respond", END)
 
-    # --- Compile with InMemorySaver checkpointer ----------------------------
-    checkpointer = MemorySaver()
-    compiled = graph.compile(checkpointer=checkpointer)
+    # --- Compile the graph (no checkpointer) ---------------------------------
+    # Conversation memory is managed externally via ConversationMemory and the
+    # conversation_history field in AgentState.  Using MemorySaver caused
+    # segfaults because LangGraph's checkpoint merge attempts to
+    # serialize/deserialize the QueryResult and TableMetadata dataclasses
+    # through pyarrow on subsequent invocations.
+    compiled = graph.compile()
     return compiled
 
 
@@ -485,9 +488,8 @@ def run_agent(
     Args:
         compiled_graph: A compiled ``StateGraph`` returned by :func:`build_agent`.
         question: The user's natural language question.
-        thread_id: A unique string identifying the current session.  Passed to
-            the ``InMemorySaver`` checkpointer so that multi-turn conversation
-            state is persisted across invocations with the same ``thread_id``.
+        thread_id: A unique string identifying the current session.  Retained
+            for API compatibility but no longer used for checkpointing.
         conversation_history: Prior conversation turns as LangChain
             ``BaseMessage`` objects.  Defaults to an empty list.
 
@@ -505,5 +507,4 @@ def run_agent(
         "error": None,
         "error_source": None,
     }
-    config = {"configurable": {"thread_id": thread_id}}
-    return compiled_graph.invoke(initial_state, config=config)
+    return compiled_graph.invoke(initial_state)
