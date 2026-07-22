@@ -1,5 +1,5 @@
 """
-GlassBot logging module.
+Polaris logging module.
 
 Provides a ``get_logger(component: str) -> logging.Logger`` factory that
 returns a named child logger for any module.  The root logger is configured
@@ -11,9 +11,9 @@ once at module import time with:
 
 Log level is read from ``config.LOG_LEVEL``; defaults to ``INFO``.
 
-When ``GLASSBOT_SKIP_CONFIG=1`` is set (e.g., during unit tests), the
+When ``POLARIS_SKIP_CONFIG=1`` is set (e.g., during unit tests), the
 module-level ``config`` singleton is ``None``.  In that case the logger
-falls back to ``LOG_LEVEL=INFO`` and ``LOG_FILE=glassbot.log``.
+falls back to ``LOG_LEVEL=INFO`` and ``LOG_FILE=polaris.log``.
 """
 
 from __future__ import annotations
@@ -22,10 +22,10 @@ import logging
 import sys
 
 # ---------------------------------------------------------------------------
-# Defaults used when config is unavailable (e.g. GLASSBOT_SKIP_CONFIG=1)
+# Defaults used when config is unavailable (e.g. POLARIS_SKIP_CONFIG=1)
 # ---------------------------------------------------------------------------
 _DEFAULT_LOG_LEVEL = "INFO"
-_DEFAULT_LOG_FILE = "glassbot.log"
+_DEFAULT_LOG_FILE = "polaris.log"
 
 _LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
@@ -44,7 +44,7 @@ def _setup_root_logger() -> None:
         return
 
     # Resolve log level and log file path from config, falling back to defaults
-    # when the config singleton was suppressed by GLASSBOT_SKIP_CONFIG.
+    # when the config singleton was suppressed by POLARIS_SKIP_CONFIG.
     log_level_str: str = _DEFAULT_LOG_LEVEL
     log_file: str = _DEFAULT_LOG_FILE
 
@@ -73,9 +73,6 @@ def _setup_root_logger() -> None:
     root = logging.getLogger()
     root.setLevel(numeric_level)
 
-    # Avoid adding duplicate handlers if _configured guard somehow races.
-    # We add our handlers unconditionally — the _configured flag ensures this
-    # function only runs once in normal operation.
     root.addHandler(stream_handler)
     root.addHandler(file_handler)
 

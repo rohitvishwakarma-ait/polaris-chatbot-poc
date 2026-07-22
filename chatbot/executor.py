@@ -1,17 +1,17 @@
 """
-GlassBot Executor.
+Polaris Executor.
 
 A thin coordinator that validates a SQL string and — if valid — executes it
-against Trino, returning the resulting :class:`~glassbot.chatbot.models.QueryResult`.
+against Trino, returning the resulting :class:`~chatbot.models.QueryResult`.
 
 This module is the single entry-point used by the LangGraph ``execute_query``
 node so that validation and execution are an atomic step with unified error
 handling.
 
 Error handling:
-    If :class:`~glassbot.utils.validators.SQLValidator` rejects the SQL, a
-    :class:`~glassbot.exceptions.SQLValidationError` is raised immediately and
-    :class:`~glassbot.chatbot.trino_client.TrinoClient` is never called.
+    If :class:`~utils.validators.SQLValidator` rejects the SQL, a
+    :class:`~exceptions.SQLValidationError` is raised immediately and
+    :class:`~chatbot.trino_client.TrinoClient` is never called.
 """
 
 from __future__ import annotations

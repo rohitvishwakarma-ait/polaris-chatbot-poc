@@ -1,5 +1,5 @@
 # ============================================================
-# GlassBot — .gitignore
+# Polaris — .gitignore
 # ============================================================
 
 # ------------------------------------------------------------
@@ -56,7 +56,7 @@ junit*.xml
 # ------------------------------------------------------------
 *.log
 logs/
-glassbot.log
+polaris.log
 
 # ------------------------------------------------------------
 # IDE & editor files
@@ -84,6 +84,20 @@ pyrightconfig.json
 # Docker artefacts (generated at runtime, not source-controlled)
 # ------------------------------------------------------------
 docker-compose.override.yml
+
+# ------------------------------------------------------------
+# Data / runtime state (persisted locally, not committed)
+# ------------------------------------------------------------
+data/datasources.json
+!data/.gitkeep
+
+# Trino dynamic catalogs (generated at runtime)
+infra/trino/catalog/*.properties
+!infra/trino/catalog/.gitkeep
+
+# Docker volumes
+om-mysql-data/
+om-es-data/
 
 # ------------------------------------------------------------
 # Jupyter / IPython

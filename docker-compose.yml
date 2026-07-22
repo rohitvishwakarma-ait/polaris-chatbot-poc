@@ -1,7 +1,143 @@
 services:
-  glassbot:
+  # =========================================================================
+  # Polaris Application
+  # =========================================================================
+  polaris:
     build: .
+    container_name: polaris-app
     ports:
       - "8501:8501"
     env_file: .env
+    environment:
+      - TRINO_HOST=trino
+      - TRINO_PORT=8080
+      - OPENMETADATA_URL=http://openmetadata:8585
+    volumes:
+      - ./data:/app/data
+      - ./infra/trino/catalog:/app/trino-catalog
+    depends_on:
+      trino:
+        condition: service_healthy
+      openmetadata:
+        condition: service_healthy
+    networks:
+      - polaris-net
     restart: unless-stopped
+
+  # =========================================================================
+  # Trino Query Engine
+  # =========================================================================
+  trino:
+    image: trinodb/trino:439
+    container_name: polaris-trino
+    ports:
+      - "8090:8080"
+    volumes:
+      - ./infra/trino/etc:/etc/trino
+      - ./infra/trino/catalog:/etc/trino/catalog
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/info"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - polaris-net
+    restart: unless-stopped
+
+  # =========================================================================
+  # OpenMetadata Server
+  # =========================================================================
+  openmetadata:
+    image: docker.getcollate.io/openmetadata/server:1.4.8
+    container_name: polaris-openmetadata
+    ports:
+      - "8585:8585"
+    environment:
+      OPENMETADATA_CLUSTER_NAME: "polaris"
+      SERVER_HOST_API_URL: "http://openmetadata:8585/api"
+      # Database config (MySQL backend for OM)
+      DB_DRIVER_CLASS: "com.mysql.cj.jdbc.Driver"
+      DB_SCHEME: "mysql"
+      DB_HOST: om-mysql
+      DB_PORT: "3306"
+      DB_USER: openmetadata
+      DB_USER_PASSWORD: openmetadata_pass
+      DB_NAME: openmetadata_db
+      # Elasticsearch config
+      ELASTICSEARCH_HOST: om-elasticsearch
+      ELASTICSEARCH_PORT: "9200"
+      ELASTICSEARCH_SCHEME: "http"
+      # Auth (disable for local dev)
+      AUTHENTICATION_PROVIDER: "no-auth"
+      AUTHORIZER_ENABLE_SECURE_SOCKET: "false"
+    depends_on:
+      om-mysql:
+        condition: service_healthy
+      om-elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8585/api/v1/system/version"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    networks:
+      - polaris-net
+    restart: unless-stopped
+
+  # =========================================================================
+  # OpenMetadata Dependencies
+  # =========================================================================
+  om-mysql:
+    image: mysql:8.0
+    container_name: polaris-om-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root_pass
+      MYSQL_DATABASE: openmetadata_db
+      MYSQL_USER: openmetadata
+      MYSQL_PASSWORD: openmetadata_pass
+    volumes:
+      - om-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - polaris-net
+    restart: unless-stopped
+
+  om-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.16.3
+    container_name: polaris-om-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+    volumes:
+      - om-es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - polaris-net
+    restart: unless-stopped
+
+# ===========================================================================
+# Volumes
+# ===========================================================================
+volumes:
+  om-mysql-data:
+  om-es-data:
+
+# ===========================================================================
+# Networks
+# ===========================================================================
+networks:
+  polaris-net:
+    driver: bridge

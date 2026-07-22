@@ -1,5 +1,5 @@
 """
-GlassBot LangGraph agent orchestrator.
+Polaris LangGraph agent orchestrator.
 
 This module defines ``AgentState`` — the shared state TypedDict that flows
 through every node of the LangGraph ``StateGraph`` — and builds the full
@@ -366,7 +366,7 @@ def build_agent(
     trino_client=None,
     response_formatter=None,
 ):
-    """Build and compile the LangGraph StateGraph for GlassBot.
+    """Build and compile the LangGraph StateGraph for Polaris.
 
     Instantiates the required services if they are not provided, then wires
     them into the graph nodes via ``functools.partial``.
@@ -387,13 +387,13 @@ def build_agent(
         invoke via ``.invoke()`` or ``.stream()``.
     """
     # --- Instantiate services from config when overrides are not provided ---
-    if metadata_service is None:
-        from chatbot.metadata_service import MetadataService
-        metadata_service = MetadataService(config)
-
     if trino_client is None:
         from chatbot.trino_client import TrinoClient
         trino_client = TrinoClient(config)
+
+    if metadata_service is None:
+        from chatbot.metadata_service import MetadataService
+        metadata_service = MetadataService(config, trino_client=trino_client)
 
     if sql_generator is None or response_formatter is None:
         llm = _build_llm(config)

@@ -1,8 +1,11 @@
 """
-GlassBot Streamlit UI entry point.
+Polaris Streamlit UI entry point.
 
-This module is the top-level Streamlit application for GlassBot. It:
+This module is the top-level Streamlit application for Polaris — an AI-powered
+analytics assistant that works with any data source configured via the
+Data Sources page.
 
+It:
 - Initialises session state (message history, thread ID, compiled LangGraph agent)
 - Renders the sidebar (title, description, "Clear Conversation" button)
 - Renders the chat history (user and assistant messages with expandable SQL and metadata)
@@ -22,7 +25,7 @@ from __future__ import annotations
 import os
 import sys
 
-_APP_DIR = os.path.dirname(os.path.abspath(__file__))   # .../polaris-poc
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Load .env from the root directory
 try:
@@ -39,7 +42,7 @@ import streamlit as st
 # ---------------------------------------------------------------------------
 # Page config — must be the very first Streamlit call in the script
 # ---------------------------------------------------------------------------
-st.set_page_config(page_title="GlassBot", page_icon="🏭", layout="wide")
+st.set_page_config(page_title="Polaris", page_icon="⭐", layout="wide")
 
 # ---------------------------------------------------------------------------
 # Guard: attempt to import Config and catch ConfigurationError early so the
@@ -53,8 +56,7 @@ try:
     from utils.helpers import rows_to_dataframe, format_execution_time
 except Exception as _import_exc:
     _CONFIG_ERROR = str(_import_exc)
-    # Define a stub so the rest of the file can reference ConfigurationError
-    # even when the import failed.
+
     class ConfigurationError(Exception):  # type: ignore[no-redef]
         pass
 
@@ -65,19 +67,7 @@ except Exception as _import_exc:
 
 
 def _build_metadata_summary(metadata: list[Any] | None) -> str:
-    """Return a brief human-readable string listing the table names/FQNs used.
-
-    Args:
-        metadata: A list of ``TableMetadata`` objects, or ``None``.
-
-    Returns:
-        A multi-line string with one table per line, e.g.::
-
-            glass_db.public.bottles (bottles)
-            glass_db.public.orders (orders)
-
-        Returns an empty string when *metadata* is ``None`` or empty.
-    """
+    """Return a brief human-readable string listing the table names/FQNs used."""
     if not metadata:
         return ""
     lines = []
@@ -99,20 +89,7 @@ def _build_metadata_summary(metadata: list[Any] | None) -> str:
 
 
 def _render_assistant_message(message: dict) -> None:
-    """Render the content of one assistant message inside a ``st.chat_message`` block.
-
-    Renders:
-    - ``message["content"]`` as markdown (natural language summary or error text)
-    - Optional SQL expander (``message["sql"]``)
-    - Optional metadata expander (``message["metadata_summary"]``)
-    - Optional query result dataframe + row count + execution time
-      (``message["query_result"]``)
-    - Error box if ``message["error"]`` is truthy
-
-    Args:
-        message: A dict with keys ``role``, ``content``, and optionally
-            ``sql``, ``metadata_summary``, ``query_result``, ``error``.
-    """
+    """Render the content of one assistant message inside a st.chat_message block."""
     if message.get("error"):
         st.error(message["content"])
         return
@@ -142,7 +119,7 @@ def _render_assistant_message(message: dict) -> None:
             )
         if query_result.truncated:
             st.info(
-                f"⚠️ Result truncated to {query_result.truncation_limit} rows. "
+                f"Result truncated to {query_result.truncation_limit} rows. "
                 "Refine your query to see more specific data."
             )
 
@@ -153,15 +130,7 @@ def _render_assistant_message(message: dict) -> None:
 
 
 def _state_to_assistant_message(state: dict) -> dict:
-    """Convert a final ``AgentState`` dict into a chat message dict for storage.
-
-    Args:
-        state: The ``AgentState`` dict returned by :func:`run_agent`.
-
-    Returns:
-        A dict with keys ``role``, ``content``, and optionally
-        ``sql``, ``metadata_summary``, ``query_result``, ``error``.
-    """
+    """Convert a final AgentState dict into a chat message dict for storage."""
     error = state.get("error")
     if error:
         return {
@@ -195,14 +164,7 @@ def _state_to_assistant_message(state: dict) -> dict:
 
 
 def _init_session_state() -> None:
-    """Initialise Streamlit session state keys if they are not yet set.
-
-    Sets:
-    - ``st.session_state.messages``: empty list of chat message dicts
-    - ``st.session_state.thread_id``: a fresh UUID string
-    - ``st.session_state.agent``: the compiled LangGraph agent (built once)
-    - ``st.session_state.agent_error``: error string if agent build failed
-    """
+    """Initialise Streamlit session state keys if they are not yet set."""
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
@@ -223,7 +185,7 @@ def _init_session_state() -> None:
                 st.session_state.agent_error = str(exc)
             except Exception as exc:  # noqa: BLE001
                 st.session_state.agent_error = (
-                    f"Unexpected error initialising GlassBot: {exc}"
+                    f"Unexpected error initialising Polaris: {exc}"
                 )
 
 
@@ -241,10 +203,11 @@ def main() -> None:
     # Sidebar
     # -----------------------------------------------------------------------
     with st.sidebar:
-        st.title("🏭 GlassBot")
+        st.title("⭐ Polaris")
         st.markdown(
-            "Ask questions about glass bottle manufacturing data in plain English. "
-            "GlassBot generates Trino SQL, executes it, and explains the results."
+            "Ask questions about your data in plain English. "
+            "Polaris generates Trino SQL, executes it across your configured "
+            "data sources, and explains the results."
         )
         st.divider()
 
@@ -253,24 +216,26 @@ def main() -> None:
             st.session_state.thread_id = str(uuid.uuid4())
             st.rerun()
 
+        st.divider()
+        st.caption("📌 Use the **Data Sources** page to add databases.")
+
     # -----------------------------------------------------------------------
     # Page title
     # -----------------------------------------------------------------------
-    st.title("🏭 GlassBot")
-    st.caption("AI-powered analytics assistant for glass bottle manufacturing")
+    st.title("⭐ Polaris")
+    st.caption("AI-powered analytics assistant — ask questions about any connected data source")
 
     # -----------------------------------------------------------------------
     # Show configuration error prominently and stop if the agent failed to build
     # -----------------------------------------------------------------------
     if st.session_state.get("agent_error"):
         st.error(
-            "**GlassBot could not start — configuration error**\n\n"
+            "**Polaris could not start — configuration error**\n\n"
             f"{st.session_state.agent_error}\n\n"
             "**Setup instructions:**\n"
             "1. Copy `.env.example` to `.env` in the root directory.\n"
             "2. Fill in all required values: `LLM_PROVIDER`, `TRINO_HOST`, "
-            "`TRINO_CATALOG`, `TRINO_SCHEMA`, `OPENMETADATA_URL`, "
-            "`OPENMETADATA_API_TOKEN`.\n"
+            "`OPENMETADATA_URL`, `OPENMETADATA_API_TOKEN`.\n"
             "3. Restart the Streamlit app."
         )
         st.stop()
@@ -290,17 +255,16 @@ def main() -> None:
     # Chat input
     # -----------------------------------------------------------------------
     user_input: str | None = st.chat_input(
-        "Ask a question about glass bottle manufacturing..."
+        "Ask a question about your data..."
     )
 
     if user_input is not None:
-        # Validate: reject empty / whitespace-only questions
         question = user_input.strip()
         if not question:
             st.warning("Please enter a question.")
             st.stop()
 
-        # Truncate at 2000 characters as per requirement 1.1
+        # Truncate at 2000 characters
         if len(question) > 2000:
             question = question[:2000]
 

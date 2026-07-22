@@ -1,5 +1,5 @@
 """
-GlassBot ResponseFormatter.
+Polaris ResponseFormatter.
 
 Converts a QueryResult into a human-readable natural language summary using
 an LLM.  For empty result sets (row_count == 0) a canned message is returned

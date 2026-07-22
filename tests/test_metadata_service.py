@@ -1,11 +1,11 @@
 """
-Unit tests for glassbot/chatbot/metadata_service.py — MetadataService.
+Unit tests for chatbot/metadata_service.py — MetadataService.
 
 Covers:
 - Successful search: mock HTTP response → verify TableMetadata fields are
   populated correctly (fqn, name, description, columns, tags).
 - Empty results: mock empty OpenMetadata response → verify MetadataNotFoundError
-  raised.
+  raised (no hardcoded fallback).
 - Connectivity error: mock httpx.ConnectError → verify MetadataConnectivityError
   raised.
 - HTTP status error: mock a non-2xx response → verify MetadataConnectivityError
@@ -263,46 +263,22 @@ class TestSuccessfulSearch:
 # ---------------------------------------------------------------------------
 
 class TestEmptyResults:
-    """MetadataService returns fallback tables when hits list is empty."""
+    """MetadataService raises MetadataNotFoundError when no tables are found."""
 
-    def test_empty_hits_returns_fallback_tables(self, service: MetadataService):
+    def test_empty_hits_raises_not_found_error(self, service: MetadataService):
         mock_resp = _mock_httpx_response(_make_response([]))
 
         with patch("httpx.get", return_value=mock_resp):
-            results = service.search_tables("completely unknown topic")
+            with pytest.raises(MetadataNotFoundError):
+                service.search_tables("completely unknown topic")
 
-        # Should return fallback tables, not raise
-        assert isinstance(results, list)
-        assert len(results) >= 1
-
-    def test_fallback_tables_have_valid_fqn(self, service: MetadataService):
-        mock_resp = _mock_httpx_response(_make_response([]))
-
-        with patch("httpx.get", return_value=mock_resp):
-            results = service.search_tables("mystery question")
-
-        for t in results:
-            parts = t.fqn.split(".")
-            assert len(parts) == 3
-
-    def test_missing_hits_key_returns_fallback(self, service: MetadataService):
-        """Malformed response (missing hits) treated as no results → fallback."""
+    def test_missing_hits_key_raises_not_found(self, service: MetadataService):
+        """Malformed response (missing hits) treated as no results → error."""
         mock_resp = _mock_httpx_response({})
 
         with patch("httpx.get", return_value=mock_resp):
-            results = service.search_tables("question")
-
-        assert isinstance(results, list)
-        assert len(results) >= 1
-
-    def test_fallback_returns_table_metadata_instances(self, service: MetadataService):
-        mock_resp = _mock_httpx_response(_make_response([]))
-
-        with patch("httpx.get", return_value=mock_resp):
-            results = service.search_tables("nothing found")
-
-        from chatbot.models import TableMetadata
-        assert all(isinstance(t, TableMetadata) for t in results)
+            with pytest.raises(MetadataNotFoundError):
+                service.search_tables("question")
 
 
 # ---------------------------------------------------------------------------
@@ -343,11 +319,11 @@ class TestConnectivityErrors:
             with pytest.raises(MetadataConnectivityError):
                 service.search_tables("any")
 
-    def test_connectivity_error_is_glassbot_error(self, service: MetadataService):
-        from exceptions import GlassBotError
+    def test_connectivity_error_is_polaris_error(self, service: MetadataService):
+        from exceptions import PolarisError
 
         with patch("httpx.get", side_effect=httpx.ConnectError("refused")):
-            with pytest.raises(GlassBotError):
+            with pytest.raises(PolarisError):
                 service.search_tables("any")
 
     def test_connect_error_chained_cause(self, service: MetadataService):

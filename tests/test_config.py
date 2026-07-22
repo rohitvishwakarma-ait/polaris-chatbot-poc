@@ -1,5 +1,5 @@
 """
-Tests for glassbot/config.py — configuration loading and validation.
+Tests for config.py — configuration loading and validation.
 
 Includes the Property 11 property-based test:
     Missing Configuration Variable Error
@@ -11,7 +11,7 @@ import os
 
 # Suppress the module-level Config() singleton so this file can be imported
 # without a fully-populated environment (tests supply their own env dicts).
-os.environ.setdefault("GLASSBOT_SKIP_CONFIG", "1")
+os.environ.setdefault("POLARIS_SKIP_CONFIG", "1")
 
 import pytest
 from hypothesis import given, settings
@@ -29,8 +29,6 @@ def _full_env() -> dict[str, str]:
     return {
         "LLM_PROVIDER": "openai:gpt-4o",
         "TRINO_HOST": "localhost",
-        "TRINO_CATALOG": "glass_bottle",
-        "TRINO_SCHEMA": "manufacturing",
         "OPENMETADATA_URL": "http://localhost:8585",
         "OPENMETADATA_API_TOKEN": "test-token",
     }
@@ -48,10 +46,21 @@ class TestConfigDefaults:
         cfg = Config(env=env)
         assert cfg.LLM_PROVIDER == "openai:gpt-4o"
         assert cfg.TRINO_HOST == "localhost"
-        assert cfg.TRINO_CATALOG == "glass_bottle"
-        assert cfg.TRINO_SCHEMA == "manufacturing"
         assert cfg.OPENMETADATA_URL == "http://localhost:8585"
         assert cfg.OPENMETADATA_API_TOKEN == "test-token"
+
+    def test_trino_catalog_default(self):
+        cfg = Config(env=_full_env())
+        assert cfg.TRINO_CATALOG == "system"
+
+    def test_trino_schema_default(self):
+        cfg = Config(env=_full_env())
+        assert cfg.TRINO_SCHEMA == "runtime"
+
+    def test_trino_catalog_override(self):
+        env = {**_full_env(), "TRINO_CATALOG": "my_catalog"}
+        cfg = Config(env=env)
+        assert cfg.TRINO_CATALOG == "my_catalog"
 
     def test_trino_port_default(self):
         cfg = Config(env=_full_env())
@@ -64,12 +73,21 @@ class TestConfigDefaults:
 
     def test_trino_user_default(self):
         cfg = Config(env=_full_env())
-        assert cfg.TRINO_USER == "glassbot"
+        assert cfg.TRINO_USER == "polaris"
 
     def test_trino_user_override(self):
         env = {**_full_env(), "TRINO_USER": "analyst"}
         cfg = Config(env=env)
         assert cfg.TRINO_USER == "analyst"
+
+    def test_app_name_default(self):
+        cfg = Config(env=_full_env())
+        assert cfg.APP_NAME == "Polaris"
+
+    def test_app_name_override(self):
+        env = {**_full_env(), "APP_NAME": "MyBot"}
+        cfg = Config(env=env)
+        assert cfg.APP_NAME == "MyBot"
 
     def test_log_level_default(self):
         cfg = Config(env=_full_env())
@@ -77,7 +95,7 @@ class TestConfigDefaults:
 
     def test_log_file_default(self):
         cfg = Config(env=_full_env())
-        assert cfg.LOG_FILE == "glassbot.log"
+        assert cfg.LOG_FILE == "polaris.log"
 
     def test_optional_fields_are_none_when_absent(self):
         cfg = Config(env=_full_env())
@@ -129,12 +147,6 @@ class TestMissingRequiredVariables:
 
 # ---------------------------------------------------------------------------
 # Property-based test — Property 11: Missing Configuration Variable Error
-#
-# For any required configuration variable that is absent from the environment
-# at startup, Config initialisation SHALL raise a ConfigurationError whose
-# message contains the name of the missing variable.
-#
-# **Validates: Requirements 11.3**
 # ---------------------------------------------------------------------------
 
 @given(st.sampled_from(REQUIRED_CONFIG_VARS))
@@ -142,12 +154,10 @@ class TestMissingRequiredVariables:
 def test_missing_config_raises_with_var_name(missing_var: str):
     """
     Property 11: Missing Configuration Variable Error
-    **Validates: Requirements 11.3**
 
     For any required configuration variable that is absent from the environment,
     Config() SHALL raise ConfigurationError with the variable name in the message.
     """
-    # Build an env dict that has every required variable EXCEPT the one under test
     env = {v: "placeholder" for v in REQUIRED_CONFIG_VARS if v != missing_var}
 
     with pytest.raises(ConfigurationError) as exc_info:

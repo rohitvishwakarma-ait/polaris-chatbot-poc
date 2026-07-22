@@ -1,139 +1,102 @@
 """
-GlassBot prompt templates.
+Polaris prompt templates.
 
-Defines the prompt strings and rendering helpers used by SQLGenerator and
-ResponseFormatter when constructing LLM messages.
+Builds LLM prompts dynamically from the table metadata returned by
+OpenMetadata or Trino introspection — no hardcoded table schemas.
 
 Contents:
-- SYSTEM_PROMPT: Core Trino SQL expert persona and SQL generation rules.
-- render_metadata: Renders a list of TableMetadata objects into a structured
-  context block for the LLM prompt.
+- build_system_prompt: Dynamically constructs the SQL generation persona
+  and rules from a list of TableMetadata objects.
+- render_metadata: Renders TableMetadata objects into a structured context
+  block for the LLM prompt.
 - SUMMARY_PROMPT: Instructions for the ResponseFormatter LLM call.
-- PromptTemplates: A simple dataclass grouping the above for injection into
+- PromptTemplates: A dataclass grouping the above for injection into
   SQLGenerator.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from chatbot.models import TableMetadata
 
 # ---------------------------------------------------------------------------
-# System prompt – SQL generation persona and rules
+# Core rules (schema-agnostic) — these never change regardless of data sources
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT: str = """\
-You are a Trino SQL expert assistant for the Glass Bottle Manufacturing domain.
-
-The Trino instance contains these business tables. Use ONLY these exact FQNs:
-
-Table 1: mysql.trino_glassbottle.customer_orders
-Description: Customer sales orders for glass bottle products
-Columns:
-  - order_id (integer): Unique order identifier
-  - customer_name (varchar): Name of the customer
-  - order_number (varchar): Order reference number
-  - product_code (varchar): Glass bottle product code
-  - quantity (integer): Number of bottles ordered
-  - order_date (date): Date the order was placed
-  - delivery_date (date): Date the order was delivered
-  - status (varchar): Order status — values: Delivered, Pending, Processing, Cancelled
-
-Table 2: postgres.public.production_orders
-Description: Internal production/manufacturing orders for glass bottles
-Columns:
-  - production_id (integer): Unique production order identifier
-  - order_number (varchar): Order reference number
-  - product_code (varchar): Glass bottle product code
-  - quantity (integer): Number of bottles to produce
-  - machine_id (varchar): ID of the machine used
-  - shift (varchar): Work shift (Morning, Afternoon, Night)
-  - production_date (date): Date of production
-  - status (varchar): Production status — values: Completed, In Progress, Pending, Cancelled
-
-Table 3: mongodb.trino_glassbottle.machine_sensor_logs
-Description: Real-time machine sensor logs from glass bottle production equipment
-Columns:
-  - machineid (varchar): Machine identifier
-  - productionid (varchar): Associated production order ID
-  - temperature (bigint): Machine temperature reading
-  - pressure (bigint): Machine pressure reading
-  - speed (bigint): Machine speed reading
-  - defects (bigint): Number of defects detected
-  - timestamp (varchar): Timestamp of the log entry
-
-Table 4: gsheets.default.trino_glassbottle_production_target
-Description: Daily production targets from Google Sheets
-Columns (IMPORTANT: names have spaces — always quote with double quotes):
-  - "date" (varchar): Production date
-  - "product code" (varchar): Glass bottle product code
-  - "planned qty" (varchar): Planned production quantity
-  - "actual qty" (varchar): Actual production quantity achieved
-  - "supervisor" (varchar): Supervisor name
-  - "remarks" (varchar): Additional remarks or notes
-
-Table 5: redis.default.machine
-Description: Real-time machine status from Redis cache (key-value format)
-Columns: _key (varchar), _value (varchar containing JSON)
-Data format — _key is like "machine:M01", _value is JSON like:
-  {"machine_id":"M01","status":"Running","current_production":8450}
-Status values: Running, Idle, Maintenance
-Example query: SELECT _key, _value FROM redis.default.machine WHERE _value LIKE '%"status":"Running"%' LIMIT 100
-
-Table 6: redis.default.production
-Description: Live production order progress from Redis cache (key-value format)
-Columns: _key (varchar), _value (varchar containing JSON)
-Data format — _key is like "production:PO1015", _value is JSON like:
-  {"production_order":"PO1015","progress":78}
-progress is a percentage (0-100)
-Example query: SELECT _key, _value FROM redis.default.production LIMIT 100
-
-Table 7: redis.default.shift
-Description: Current shift information from Redis cache (key-value format)
-Columns: _key (varchar), _value (varchar containing JSON)
-
-Table 8: redis.default.dashboard
-Description: Dashboard summary KPIs from Redis cache (key-value format)
-Columns: _key (varchar), _value (varchar containing JSON)
-
+_BASE_RULES: str = """\
 RULES — follow every rule strictly:
-1. Table names MUST be EXACTLY 3 parts: catalog.schema.table — never 4 or more.
-2. Pick the best-matching table for each question:
-   - Customer orders, deliveries → mysql.trino_glassbottle.customer_orders
-   - Production orders, machines, shifts → postgres.public.production_orders
-   - Machine sensor logs, temperature, pressure, defects → mongodb.trino_glassbottle.machine_sensor_logs
-   - Production targets, planned vs actual → gsheets.default.trino_glassbottle_production_target
-   - Live machine status, running/idle/maintenance machines (real-time) → redis.default.machine
-   - Live production order progress (real-time) → redis.default.production
-   - Shift info (real-time) → redis.default.shift
-   - Dashboard KPIs (real-time) → redis.default.dashboard
+1. Table names MUST use fully qualified names (catalog.schema.table) as shown above.
+2. Pick the best-matching table(s) for the user's question based on the table descriptions.
 3. Only use columns listed above — never invent column names.
-4. For Table 4 (gsheets), always double-quote column names: "date", "product code", "planned qty", "actual qty", "supervisor", "remarks"
+4. If a column name contains spaces or reserved words, always double-quote it.
 5. No SELECT * — select only needed columns.
 6. Always include LIMIT (default 100) unless user asks for all rows.
 7. Return ONLY the SQL — no explanation, no markdown fences, no trailing semicolon.
 
 TYPE CASTING RULES — critical for avoiding errors:
-8. gsheets "date" column is varchar, NOT a date type. To compare with a date:
-   - CORRECT: WHERE "date" = '2026-07-08'
-   - CORRECT: WHERE "date" = CAST(CURRENT_DATE AS varchar)
-   - WRONG:   WHERE "date" = CURRENT_DATE  (type mismatch: varchar vs date)
-   - CORRECT for planned vs actual: WHERE CAST("planned qty" AS integer) > CAST("actual qty" AS integer)
-9. gsheets "planned qty" and "actual qty" are varchar — cast to integer for numeric comparisons:
-   - CORRECT: CAST("planned qty" AS integer) > CAST("actual qty" AS integer)
-10. Redis _key is always varchar. Never join Redis on integer columns directly:
-   - WRONG:   JOIN redis.default.machine rm ON po.machine_id = rm._key  (OK, both varchar)
-   - WRONG:   JOIN redis.default.dashboard rd ON co.order_id = rd._key  (order_id is integer, _key is varchar)
-   - Redis keys have prefixes like "machine:M01", "production:PO1001", "shift:current"
-   - To join Redis machine with production_orders: ON rm._key = 'machine:' || po.machine_id
-   - To join Redis production with production_orders: ON rp._key = 'production:' || po.order_number
-   - Do NOT join Redis dashboard or shift tables with order tables — they use fixed keys like 'dashboard:summary'
-11. mongodb productionid is varchar. To join with postgres production_id (integer):
-    CAST(msl.productionid AS integer) = po.production_id  OR  po.production_id = CAST(msl.productionid AS integer)
+8. When joining columns of different types (e.g., varchar to integer), always CAST explicitly.
+9. varchar columns that hold dates should be compared as strings: WHERE col = '2026-07-08'
+10. varchar columns that hold numbers should be CAST to integer/bigint for numeric operations.
+11. Redis-style key-value tables (_key, _value) store JSON in _value — use LIKE for filtering.
 """
+
+
+# ---------------------------------------------------------------------------
+# Dynamic system prompt builder
+# ---------------------------------------------------------------------------
+
+
+def build_system_prompt(tables: list[TableMetadata]) -> str:
+    """Build a complete system prompt dynamically from available table metadata.
+
+    This replaces the previously hardcoded SYSTEM_PROMPT. The prompt includes:
+    - A persona statement
+    - The full schema listing derived from the provided TableMetadata
+    - Universal SQL generation rules
+
+    Args:
+        tables: List of TableMetadata objects representing available tables.
+
+    Returns:
+        A complete system prompt string ready for the LLM.
+    """
+    if not tables:
+        return (
+            "You are a Trino SQL expert assistant.\n\n"
+            "No table metadata is currently available. Ask the user to configure "
+            "data sources in the Data Sources page first.\n\n"
+            "If the user asks a question anyway, explain that no tables are "
+            "configured and suggest they visit the Data Sources configuration page."
+        )
+
+    # Build the table listing
+    table_blocks: list[str] = []
+    for i, table in enumerate(tables, 1):
+        block = f"Table {i}: {table.fqn}\n"
+        block += f"Description: {table.description or '(no description)'}\n"
+        block += "Columns:\n"
+        for col in table.columns:
+            desc = col.description or "(no description)"
+            col_name = col.name
+            # Quote column names with spaces
+            if " " in col_name:
+                col_name = f'"{col_name}"'
+            block += f"  - {col_name} ({col.data_type}): {desc}\n"
+        table_blocks.append(block)
+
+    tables_text = "\n".join(table_blocks)
+
+    return (
+        "You are a Trino SQL expert assistant.\n\n"
+        "The Trino instance contains the following tables. "
+        "Use ONLY these exact fully qualified names (catalog.schema.table):\n\n"
+        f"{tables_text}\n"
+        f"{_BASE_RULES}"
+    )
+
 
 # ---------------------------------------------------------------------------
 # Metadata template – renders TableMetadata objects into an LLM context block
@@ -188,15 +151,15 @@ def render_metadata(tables: list[TableMetadata]) -> str:
     return "\n".join(lines).rstrip()
 
 
-# Alias kept for backwards compatibility / direct template access
+# Alias kept for backwards compatibility
 METADATA_TEMPLATE = render_metadata
 
 # ---------------------------------------------------------------------------
-# Summary prompt – ResponseFormatter instructions
+# Summary prompt – ResponseFormatter instructions (generic, not domain-specific)
 # ---------------------------------------------------------------------------
 
 SUMMARY_PROMPT: str = """\
-You are a helpful data analyst assistant for the Glass Bottle Manufacturing domain.
+You are a helpful data analyst assistant.
 
 Summarise the following query results in plain English for a business user.
 Always mention:
@@ -204,6 +167,7 @@ Always mention:
 - The query execution time in milliseconds.
 
 Be concise and factual. Do not reproduce the raw data rows in your summary.
+Highlight key patterns, totals, or insights where appropriate.
 """
 
 # ---------------------------------------------------------------------------
@@ -216,11 +180,11 @@ class PromptTemplates:
     """Groups prompt strings and rendering helpers for SQLGenerator injection.
 
     Attributes:
-        system_prompt: Core SQL generation rules and persona.
+        build_system_prompt: Callable that builds the system prompt from metadata.
         render_metadata: Callable that converts TableMetadata list to a string.
         summary_prompt: Instructions for the ResponseFormatter LLM call.
     """
 
-    system_prompt: str = SYSTEM_PROMPT
-    render_metadata: object = render_metadata  # callable
+    build_system_prompt: Callable = field(default=build_system_prompt)
+    render_metadata: Callable = field(default=render_metadata)
     summary_prompt: str = SUMMARY_PROMPT
