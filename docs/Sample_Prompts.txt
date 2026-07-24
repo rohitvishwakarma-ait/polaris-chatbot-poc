@@ -1,0 +1,5 @@
+Show all customer orders along with their corresponding production orders.
+Show customer name, sales order, production order, machine, and production status.
+Show machine sensor readings for every production order
+Display production status along with planned and actual quantities.
+Show customer orders together with production status, machine performance, and production targets.
