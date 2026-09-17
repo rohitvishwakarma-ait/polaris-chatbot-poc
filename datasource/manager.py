@@ -40,9 +40,13 @@ class DataSourceManager:
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._file_path = self._data_dir / _DEFAULT_FILE
 
-        # Trino catalog directory (where .properties files go)
-        default_catalog_dir = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "infra", "trino", "catalog"
+        # Trino catalog directory (where .properties files go).
+        # Priority: explicit arg > TRINO_CATALOG_DIR env var > default path.
+        default_catalog_dir = os.environ.get(
+            "TRINO_CATALOG_DIR",
+            os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), "infra", "trino", "catalog"
+            ),
         )
         self._trino_mgr = TrinoCatalogManager(
             catalog_dir=trino_catalog_dir or default_catalog_dir

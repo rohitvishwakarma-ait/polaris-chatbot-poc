@@ -30,6 +30,9 @@ class TrinoCatalogManager:
     def __init__(self, catalog_dir: str) -> None:
         self._catalog_dir = Path(catalog_dir)
         self._catalog_dir.mkdir(parents=True, exist_ok=True)
+        # Trino runs in Docker and needs to reach host databases via host.docker.internal.
+        # When user enters "localhost" in the Data Sources form, we rewrite it.
+        self._docker_host_rewrite = os.environ.get("TRINO_CATALOG_HOST", "host.docker.internal")
 
     def create_catalog(self, datasource: DataSource) -> str:
         """Generate a Trino catalog .properties file for the given data source.
@@ -90,14 +93,19 @@ class TrinoCatalogManager:
             # Google Sheets doesn't have a host to test
             return True, "Google Sheets connector configured (no host test needed)."
 
+        # Rewrite localhost to Docker-accessible host (same as catalog generation)
+        test_host = datasource.host
+        if self._docker_host_rewrite and test_host in ("localhost", "127.0.0.1"):
+            test_host = self._docker_host_rewrite
+
         try:
             sock = socket.create_connection(
-                (datasource.host, datasource.port), timeout=5
+                (test_host, datasource.port), timeout=5
             )
             sock.close()
             return True, f"Successfully connected to {datasource.host}:{datasource.port}"
         except (socket.timeout, socket.error, OSError) as exc:
-            return False, f"Cannot reach {datasource.host}:{datasource.port} — {exc}"
+            return False, f"Cannot reach {datasource.host}:{datasource.port} (resolved to {test_host}) — {exc}"
 
     # ------------------------------------------------------------------
     # Properties builders per connector type
@@ -122,7 +130,16 @@ class TrinoCatalogManager:
         if builder is None:
             raise ValueError(f"No property builder for type: {ds.type}")
 
-        return builder(ds)
+        # Rewrite localhost to Docker-accessible host so Trino container can reach it
+        effective_host = ds.host
+        if self._docker_host_rewrite and effective_host in ("localhost", "127.0.0.1"):
+            effective_host = self._docker_host_rewrite
+
+        # Create a copy of ds with the rewritten host for property generation
+        from dataclasses import replace
+        ds_effective = replace(ds, host=effective_host)
+
+        return builder(ds_effective)
 
     def _postgres_props(self, ds: DataSource) -> dict[str, str]:
         props = {
@@ -135,9 +152,10 @@ class TrinoCatalogManager:
         return props
 
     def _mysql_props(self, ds: DataSource) -> dict[str, str]:
+        # MySQL connector does NOT allow database in the JDBC URL
         props = {
             "connector.name": "mysql",
-            "connection-url": f"jdbc:mysql://{ds.host}:{ds.port}/{ds.database}",
+            "connection-url": f"jdbc:mysql://{ds.host}:{ds.port}",
             "connection-user": ds.username,
             "connection-password": ds.password,
         }
@@ -145,15 +163,24 @@ class TrinoCatalogManager:
         return props
 
     def _mongodb_props(self, ds: DataSource) -> dict[str, str]:
+        # Build MongoDB connection URL — only include credentials if provided
+        if ds.username and ds.password:
+            auth_prefix = f"{ds.username}:{ds.password}@"
+        elif ds.username:
+            auth_prefix = f"{ds.username}@"
+        else:
+            auth_prefix = ""
+
+        if ds.database:
+            mongo_url = f"mongodb://{auth_prefix}{ds.host}:{ds.port}/{ds.database}"
+        else:
+            mongo_url = f"mongodb://{auth_prefix}{ds.host}:{ds.port}/"
+
         props = {
             "connector.name": "mongodb",
-            "mongodb.connection-url": f"mongodb://{ds.username}:{ds.password}@{ds.host}:{ds.port}/",
+            "mongodb.connection-url": mongo_url,
             "mongodb.schema-collection": ds.extra_config.get("schema_collection", "_schema"),
         }
-        if ds.database:
-            props["mongodb.connection-url"] = (
-                f"mongodb://{ds.username}:{ds.password}@{ds.host}:{ds.port}/{ds.database}"
-            )
         extra = {k: v for k, v in ds.extra_config.items() if k != "schema_collection"}
         props.update(extra)
         return props

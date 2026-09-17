@@ -41,6 +41,39 @@ def get_manager() -> DataSourceManager:
     return st.session_state.ds_manager
 
 
+def _remove_from_openmetadata(service_name: str) -> tuple[bool, str]:
+    """Delete a data source's service (and its tables) from OpenMetadata."""
+    om_url = os.environ.get("OPENMETADATA_URL")
+    om_token = os.environ.get("OPENMETADATA_API_TOKEN")
+    if not (om_url and om_token):
+        return True, "OpenMetadata not configured — nothing to clean up."
+    try:
+        from datasource.openmetadata_sync import OpenMetadataSync
+        om_sync = OpenMetadataSync(om_url, om_token)
+        return om_sync.remove_service(service_name)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"OpenMetadata cleanup error: {exc}"
+
+
+def _extra_config_to_text(extra: dict) -> str:
+    """Render an extra_config dict back into key=value lines for editing."""
+    if not extra:
+        return ""
+    return "\n".join(f"{k}={v}" for k, v in extra.items())
+
+
+def _parse_extra_config(raw: str) -> dict:
+    """Parse key=value lines into a dict."""
+    result: dict = {}
+    if raw:
+        for line in raw.strip().split("\n"):
+            line = line.strip()
+            if "=" in line:
+                key, value = line.split("=", 1)
+                result[key.strip()] = value.strip()
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Page Header
 # ---------------------------------------------------------------------------
@@ -77,7 +110,7 @@ if datasources:
                 st.text(f"Created: {ds.created_at[:10]}")
 
             # Action buttons
-            btn_col1, btn_col2, btn_col3 = st.columns(3)
+            btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
             with btn_col1:
                 if st.button("🔄 Test Connection", key=f"test_{ds.id}"):
                     success, message = manager.test_connection(ds)
@@ -86,12 +119,69 @@ if datasources:
                     else:
                         st.error(message)
             with btn_col2:
-                if st.button("🗑️ Remove", key=f"remove_{ds.id}", type="secondary"):
-                    manager.remove(ds.id)
-                    st.success(f"Removed '{ds.name}'")
-                    st.rerun()
+                if st.button("☁️ Sync Metadata", key=f"sync_{ds.id}"):
+                    om_url = os.environ.get("OPENMETADATA_URL")
+                    om_token = os.environ.get("OPENMETADATA_API_TOKEN")
+                    if om_url and om_token:
+                        from datasource.openmetadata_sync import OpenMetadataSync
+                        om_sync = OpenMetadataSync(om_url, om_token)
+                        ok, msg = om_sync.register_service(ds)
+                        if ok:
+                            st.success(msg)
+                        else:
+                            st.warning(msg)
+                    else:
+                        st.warning("OpenMetadata not configured (OPENMETADATA_URL / OPENMETADATA_API_TOKEN missing).")
             with btn_col3:
-                st.caption(f"ID: {ds.id[:8]}...")
+                if st.button("✏️ Edit", key=f"editbtn_{ds.id}"):
+                    st.session_state[f"editing_{ds.id}"] = not st.session_state.get(f"editing_{ds.id}", False)
+            with btn_col4:
+                if st.button("🗑️ Remove", key=f"remove_{ds.id}", type="secondary"):
+                    # 1. Remove from OpenMetadata (service + tables)
+                    om_ok, om_msg = _remove_from_openmetadata(ds.name)
+                    # 2. Remove from Polaris (also deletes the Trino catalog file)
+                    manager.remove(ds.id)
+                    st.success(f"Removed '{ds.name}' (Trino catalog deleted). OpenMetadata: {om_msg}")
+                    st.info("Restart Trino to fully unload the catalog: `docker restart polaris-trino`")
+                    st.rerun()
+
+            # ---- Edit form (toggled by Edit button) ----
+            if st.session_state.get(f"editing_{ds.id}", False):
+                st.divider()
+                st.markdown("**Edit Connection**")
+                with st.form(f"edit_form_{ds.id}"):
+                    e1, e2 = st.columns(2)
+                    with e1:
+                        e_host = st.text_input("Host", value=ds.host, key=f"ehost_{ds.id}")
+                        e_database = st.text_input("Database / Schema", value=ds.database, key=f"edb_{ds.id}")
+                        e_username = st.text_input("Username", value=ds.username, key=f"euser_{ds.id}")
+                    with e2:
+                        e_port = st.number_input(
+                            "Port", min_value=0, max_value=65535, value=int(ds.port), key=f"eport_{ds.id}"
+                        )
+                        e_password = st.text_input(
+                            "Password", value=ds.password, type="password", key=f"epwd_{ds.id}"
+                        )
+                    e_extra = st.text_area(
+                        "Advanced Properties (key=value per line)",
+                        value=_extra_config_to_text(ds.extra_config),
+                        key=f"eextra_{ds.id}",
+                        height=80,
+                    )
+                    save = st.form_submit_button("💾 Save Changes", type="primary")
+                    if save:
+                        updates = {
+                            "host": e_host.strip(),
+                            "port": int(e_port),
+                            "database": e_database.strip(),
+                            "username": e_username.strip(),
+                            "password": e_password,
+                            "extra_config": _parse_extra_config(e_extra),
+                        }
+                        manager.update(ds.id, updates)
+                        st.session_state[f"editing_{ds.id}"] = False
+                        st.success(f"Updated '{ds.name}'. Restart Trino to apply: `docker restart polaris-trino`")
+                        st.rerun()
 
     st.divider()
 else:

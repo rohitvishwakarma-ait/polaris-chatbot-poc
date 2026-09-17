@@ -25,7 +25,6 @@ import functools
 from typing import TypedDict
 
 from langchain_core.messages import BaseMessage
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
 from chatbot.executor import Executor
@@ -120,8 +119,16 @@ def retrieve_metadata(state: AgentState, metadata_service) -> dict:
             exc,
             exc_info=True,
         )
+        # Provide a helpful error that guides the user
+        error_msg = str(exc)
+        if "No tables found" in error_msg or "configure data sources" in error_msg.lower():
+            error_msg = (
+                "No data sources are configured yet. "
+                "Please go to the **Data Sources** page (sidebar) to add a database connection. "
+                "Once added, Polaris will automatically discover your tables and you can start querying."
+            )
         return {
-            "error": f"Could not retrieve table metadata: {exc}",
+            "error": error_msg,
             "error_source": "MetadataService",
         }
 
@@ -463,9 +470,8 @@ def build_agent(
     # respond is the terminal node — route to END
     graph.add_edge("respond", END)
 
-    # --- Compile with InMemorySaver checkpointer ----------------------------
-    checkpointer = MemorySaver()
-    compiled = graph.compile(checkpointer=checkpointer)
+    # --- Compile the graph -----------------------------------------------------
+    compiled = graph.compile()
     return compiled
 
 
@@ -505,5 +511,4 @@ def run_agent(
         "error": None,
         "error_source": None,
     }
-    config = {"configurable": {"thread_id": thread_id}}
-    return compiled_graph.invoke(initial_state, config=config)
+    return compiled_graph.invoke(initial_state)

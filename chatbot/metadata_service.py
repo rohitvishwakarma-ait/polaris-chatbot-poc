@@ -200,44 +200,90 @@ class MetadataService:
     def _introspect_trino(self, limit: int) -> list[TableMetadata]:
         """Discover tables directly from Trino's information_schema.
 
-        Queries all catalogs' information_schema to find available tables
-        and their columns.
+        Queries each catalog's information_schema to find available tables
+        and their columns. Only queries schemas that match configured data
+        sources to avoid discovering irrelevant tables.
         """
         if not self._trino_client:
             return []
 
         try:
-            # Get tables from all catalogs
-            tables_sql = (
-                "SELECT table_catalog, table_schema, table_name "
-                "FROM system.metadata.table_comments "
-                f"LIMIT {limit}"
+            # Load configured data sources to know which schemas are relevant
+            configured_schemas = self._get_configured_schemas()
+
+            # First, get the list of catalogs
+            catalogs_result = self._trino_client.execute(
+                "SHOW CATALOGS", row_limit=50
             )
-            result = self._trino_client.execute(tables_sql, row_limit=limit)
+            catalogs = [
+                row.get("Catalog", "")
+                for row in catalogs_result.rows
+                if row.get("Catalog", "") not in ("system", "")
+            ]
+
+            if not catalogs:
+                logger.info("No user catalogs found in Trino")
+                return []
 
             tables: list[TableMetadata] = []
-            for row in result.rows:
-                catalog = row.get("table_catalog", "")
-                schema = row.get("table_schema", "")
-                table_name = row.get("table_name", "")
+            for catalog in catalogs:
+                try:
+                    # Filter to only the configured schema for this catalog
+                    schema_filter = configured_schemas.get(catalog)
+                    if schema_filter:
+                        tables_sql = (
+                            f"SELECT table_schema, table_name "
+                            f"FROM {catalog}.information_schema.tables "
+                            f"WHERE table_schema = '{schema_filter}' "
+                            f"LIMIT {limit}"
+                        )
+                    else:
+                        tables_sql = (
+                            f"SELECT table_schema, table_name "
+                            f"FROM {catalog}.information_schema.tables "
+                            f"WHERE table_schema != 'information_schema' "
+                            f"LIMIT {limit}"
+                        )
+                    result = self._trino_client.execute(tables_sql, row_limit=limit)
 
-                # Skip system schemas
-                if schema in ("information_schema", "sys", "metadata"):
+                    for row in result.rows:
+                        schema = row.get("table_schema", "")
+                        table_name = row.get("table_name", "")
+                        fqn = f"{catalog}.{schema}.{table_name}"
+
+                        # Get columns for this table
+                        columns = self._get_columns(catalog, schema, table_name)
+
+                        # If no columns found (e.g., Redis connector), use default key-value schema
+                        if not columns:
+                            columns = [
+                                ColumnInfo("_key", "varchar", "Key identifier"),
+                                ColumnInfo("_value", "varchar", "JSON value"),
+                            ]
+
+                        # Get description — enrich Redis/key-value tables with
+                        # sample data so the LLM knows what's inside
+                        description = self._get_table_description(
+                            catalog, schema, table_name, columns
+                        )
+
+                        tables.append(TableMetadata(
+                            fqn=fqn,
+                            name=table_name,
+                            description=description,
+                            columns=columns,
+                            tags=[],
+                            relationships=[],
+                        ))
+
+                        if len(tables) >= limit:
+                            break
+                except Exception as exc:
+                    logger.debug("Failed to introspect catalog %s: %s", catalog, exc)
                     continue
 
-                fqn = f"{catalog}.{schema}.{table_name}"
-
-                # Get columns for this table
-                columns = self._get_columns(catalog, schema, table_name)
-
-                tables.append(TableMetadata(
-                    fqn=fqn,
-                    name=table_name,
-                    description=None,
-                    columns=columns,
-                    tags=[],
-                    relationships=[],
-                ))
+                if len(tables) >= limit:
+                    break
 
             logger.info("Introspected %d table(s) from Trino", len(tables))
             return tables
@@ -245,6 +291,42 @@ class MetadataService:
         except Exception as exc:
             logger.error("Trino introspection failed: %s", exc)
             return []
+
+    def _get_table_description(
+        self, catalog: str, schema: str, table_name: str, columns: list[ColumnInfo]
+    ) -> str | None:
+        """Generate a description for a table, especially for key-value stores.
+
+        For Redis-style tables (columns are just _key and _value), samples
+        actual data to create a meaningful description the LLM can use.
+        """
+        # Check if this is a key-value table (Redis pattern)
+        col_names = {c.name for c in columns}
+        if col_names == {"_key", "_value"} and self._trino_client:
+            try:
+                sample = self._trino_client.execute(
+                    f"SELECT _key, _value FROM {catalog}.{schema}.{table_name} LIMIT 3",
+                    row_limit=3,
+                )
+                if sample.rows:
+                    keys = [r.get("_key", "") for r in sample.rows]
+                    # Show sample keys and first value for context
+                    first_value = sample.rows[0].get("_value", "")
+                    if len(first_value) > 200:
+                        first_value = first_value[:200] + "..."
+                    return (
+                        f"REAL-TIME Redis key-value table '{table_name}' — "
+                        f"USE THIS for current/live status queries about '{table_name}'. "
+                        f"Columns: _key (varchar), _value (varchar containing JSON). "
+                        f"Sample keys: {keys}. "
+                        f"Sample JSON value: {first_value}. "
+                        f"Query pattern: SELECT _key, _value FROM {catalog}.{schema}.{table_name} "
+                        f"WHERE _value LIKE '%\"status\":\"Running\"%' LIMIT 100"
+                    )
+            except Exception:
+                pass
+
+        return None
 
     def _get_columns(
         self, catalog: str, schema: str, table_name: str
@@ -272,6 +354,34 @@ class MetadataService:
         except Exception as exc:
             logger.debug("Failed to get columns for %s.%s.%s: %s", catalog, schema, table_name, exc)
             return []
+
+    def _get_configured_schemas(self) -> dict[str, str]:
+        """Load configured data sources and return a catalog→schema mapping.
+
+        Returns:
+            Dict mapping catalog_name → target_schema (from datasources.json).
+            Empty string value means "all schemas".
+        """
+        try:
+            import json
+            from pathlib import Path
+
+            data_file = Path(__file__).parent.parent / "data" / "datasources.json"
+            if not data_file.exists():
+                return {}
+
+            with open(data_file, "r") as f:
+                data = json.load(f)
+
+            mapping = {}
+            for ds in data.get("datasources", []):
+                catalog_name = ds.get("name", "")
+                database = ds.get("database", "")
+                if catalog_name and database:
+                    mapping[catalog_name] = database
+            return mapping
+        except Exception:
+            return {}
 
 
 def _extract_hits(data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -320,18 +430,20 @@ def _normalize_fqn(om_fqn: str, table_name: str) -> str:
     OpenMetadata uses: service_name.database.schema.table (4 parts)
     Trino needs:       catalog.schema.table (3 parts)
 
-    Strategy:
-    - If the FQN has exactly 3 dots (4 parts), take parts [1], [2], [3]
-      as catalog (database), schema, table.
-    - If it already has 3 parts, use as-is.
-    - Otherwise, return the raw FQN.
+    In Polaris, the service_name IS the Trino catalog name (since we name
+    the OM service the same as the Trino catalog). So:
+    - parts[0] = service_name = Trino catalog
+    - parts[1] = database (OM concept, often same as schema)
+    - parts[2] = schema
+    - parts[3] = table
+
+    Trino FQN = parts[0].parts[2].parts[3]  (catalog.schema.table)
     """
     parts = om_fqn.split(".")
     if len(parts) == 4:
-        # service.database.schema.table → database.schema.table
-        # The "database" in OM typically maps to the Trino catalog name
-        # which is the datasource name configured in Polaris
-        return f"{parts[1]}.{parts[2]}.{parts[3]}"
+        # service.database.schema.table → service.schema.table
+        # service_name = Trino catalog name
+        return f"{parts[0]}.{parts[2]}.{parts[3]}"
     elif len(parts) == 3:
         return om_fqn
     else:

@@ -1,3 +1,26 @@
+# ===========================================================================
+# Polaris — Unified Docker Compose (Local + Production)
+# ===========================================================================
+# Single compose file for all environments. Everything runs in Docker.
+# Local dev and production use the same stack — what works here works there.
+#
+# Usage:
+#   docker compose up -d                    # Start everything
+#   docker compose up -d --build polaris    # Rebuild app after code changes
+#   docker compose logs -f polaris          # View app logs
+#
+# Services:
+#   - polaris        (port 8501) — Streamlit chat UI
+#   - trino          (port 8090) — Federated query engine
+#   - openmetadata   (port 8585) — Metadata catalog
+#   - om-mysql       (internal)  — OpenMetadata backend DB
+#   - om-elasticsearch (internal) — OpenMetadata search
+#
+# Data source databases (MySQL, PostgreSQL, MongoDB, Redis) are expected
+# to be reachable from the Docker network. For local dev, add them to
+# this compose file or use `extra_hosts` to reach host services.
+# ===========================================================================
+
 services:
   # =========================================================================
   # Polaris Application
@@ -12,6 +35,9 @@ services:
       - TRINO_HOST=trino
       - TRINO_PORT=8080
       - OPENMETADATA_URL=http://openmetadata:8585
+      - TRINO_CATALOG_DIR=/app/trino-catalog
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/app/data
       - ./infra/trino/catalog:/app/trino-catalog
@@ -32,6 +58,8 @@ services:
     container_name: polaris-trino
     ports:
       - "8090:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./infra/trino/etc:/etc/trino
       - ./infra/trino/catalog:/etc/trino/catalog
@@ -48,6 +76,38 @@ services:
   # =========================================================================
   # OpenMetadata Server
   # =========================================================================
+  openmetadata-migrate:
+    image: docker.getcollate.io/openmetadata/server:1.4.8
+    container_name: polaris-openmetadata-migrate
+    command: ["/opt/openmetadata/bootstrap/openmetadata-ops.sh", "migrate"]
+    environment:
+      OPENMETADATA_CLUSTER_NAME: "polaris"
+      SERVER_HOST_API_URL: "http://openmetadata:8585/api"
+      DB_DRIVER_CLASS: "com.mysql.cj.jdbc.Driver"
+      DB_SCHEME: "mysql"
+      DB_HOST: om-mysql
+      DB_PORT: "3306"
+      DB_USER: openmetadata
+      DB_USER_PASSWORD: openmetadata_pass
+      DB_NAME: openmetadata_db
+      ELASTICSEARCH_HOST: om-elasticsearch
+      ELASTICSEARCH_PORT: "9200"
+      ELASTICSEARCH_SCHEME: "http"
+      AUTHENTICATION_PROVIDER: "basic"
+      AUTHENTICATION_PUBLIC_KEYS: '[http://openmetadata:8585/api/v1/system/config/jwks]'
+      AUTHORIZER_CLASS_NAME: "org.openmetadata.service.security.DefaultAuthorizer"
+      AUTHORIZER_REQUEST_FILTER: "org.openmetadata.service.security.JwtFilter"
+      AUTHORIZER_ADMIN_PRINCIPALS: '[admin]'
+      AUTHORIZER_PRINCIPAL_DOMAIN: "open-metadata.org"
+    depends_on:
+      om-mysql:
+        condition: service_healthy
+      om-elasticsearch:
+        condition: service_healthy
+    networks:
+      - polaris-net
+    restart: "no"
+
   openmetadata:
     image: docker.getcollate.io/openmetadata/server:1.4.8
     container_name: polaris-openmetadata
@@ -56,7 +116,6 @@ services:
     environment:
       OPENMETADATA_CLUSTER_NAME: "polaris"
       SERVER_HOST_API_URL: "http://openmetadata:8585/api"
-      # Database config (MySQL backend for OM)
       DB_DRIVER_CLASS: "com.mysql.cj.jdbc.Driver"
       DB_SCHEME: "mysql"
       DB_HOST: om-mysql
@@ -64,24 +123,29 @@ services:
       DB_USER: openmetadata
       DB_USER_PASSWORD: openmetadata_pass
       DB_NAME: openmetadata_db
-      # Elasticsearch config
       ELASTICSEARCH_HOST: om-elasticsearch
       ELASTICSEARCH_PORT: "9200"
       ELASTICSEARCH_SCHEME: "http"
-      # Auth (disable for local dev)
-      AUTHENTICATION_PROVIDER: "no-auth"
-      AUTHORIZER_ENABLE_SECURE_SOCKET: "false"
+      AUTHENTICATION_PROVIDER: "basic"
+      AUTHENTICATION_PUBLIC_KEYS: '[http://openmetadata:8585/api/v1/system/config/jwks]'
+      AUTHORIZER_CLASS_NAME: "org.openmetadata.service.security.DefaultAuthorizer"
+      AUTHORIZER_REQUEST_FILTER: "org.openmetadata.service.security.JwtFilter"
+      AUTHORIZER_ADMIN_PRINCIPALS: '[admin]'
+      AUTHORIZER_PRINCIPAL_DOMAIN: "open-metadata.org"
+      PIPELINE_SERVICE_CLIENT_ENABLED: "false"
     depends_on:
       om-mysql:
         condition: service_healthy
       om-elasticsearch:
         condition: service_healthy
+      openmetadata-migrate:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8585/api/v1/system/version"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8585/api/v1/system/version || exit 1"]
       interval: 15s
       timeout: 10s
-      retries: 20
-      start_period: 60s
+      retries: 30
+      start_period: 120s
     networks:
       - polaris-net
     restart: unless-stopped

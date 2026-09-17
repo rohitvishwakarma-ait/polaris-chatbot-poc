@@ -82,7 +82,9 @@ class SQLGenerator:
             else str(response.content)
         )
 
-        return self._strip_fences(raw)
+        cleaned = self._strip_fences(raw)
+        # Defensively keep only the first statement in case the LLM returns several.
+        return self._first_statement(cleaned)
 
     # ------------------------------------------------------------------
     # Prompt construction (separated for testability)
@@ -150,3 +152,54 @@ class SQLGenerator:
         if match:
             return match.group(1).strip()
         return text.strip()
+
+    @staticmethod
+    def _first_statement(sql: str) -> str:
+        """Return only the first SQL statement when multiple are present.
+
+        Trino executes a single statement per request. LLMs sometimes emit
+        several statements (separated by semicolons or stacked back-to-back).
+        This keeps only the first complete statement.
+
+        Strategy:
+        1. If there's a semicolon, take everything before the first one.
+        2. Otherwise, if multiple statements are stacked (a new SELECT/WITH
+           starts on its own line after a complete query), keep up to the
+           start of the second statement.
+        """
+        text = sql.strip()
+
+        # Case 1: semicolon-separated — take the first statement
+        if ";" in text:
+            first = text.split(";", 1)[0].strip()
+            if first:
+                return first
+
+        # Case 2: stacked statements without semicolons.
+        # Find a line that starts a new top-level query after the first one.
+        lines = text.split("\n")
+        collected: list[str] = []
+        started = False
+        for line in lines:
+            stripped = line.strip().upper()
+            starts_new_query = stripped.startswith("SELECT ") or stripped.startswith("WITH ")
+            if started and starts_new_query:
+                # Second statement begins — stop here.
+                break
+            if starts_new_query:
+                started = True
+            collected.append(line)
+
+        result = "\n".join(collected).strip()
+        result = result or text
+
+        # Strip a trailing dangling set-operator (UNION/INTERSECT/EXCEPT [ALL])
+        # left over when the LLM intended a second statement.
+        result = re.sub(
+            r"\s+(UNION|INTERSECT|EXCEPT)(\s+ALL)?\s*$",
+            "",
+            result,
+            flags=re.IGNORECASE,
+        ).strip()
+
+        return result
