@@ -233,23 +233,52 @@ with st.form("add_datasource_form", clear_on_submit=True):
     # Password on its own row for security
     ds_password = st.text_input("Password", type="password", placeholder="Enter password")
 
+    # Google Sheets — dedicated fields (only used when Type = Google Sheets)
+    with st.expander("Google Sheets settings (for Google Sheets type)"):
+        st.caption(
+            "Provide a Google service-account key file and the metadata sheet ID. "
+            "Copy the key JSON into `infra/trino/secrets/` — it is mounted into Trino "
+            "at `/etc/trino/secrets/`."
+        )
+        gs_credentials_path = st.text_input(
+            "Credentials path (inside Trino)",
+            placeholder="/etc/trino/secrets/my-service-account.json",
+            help="In-container path to the service-account JSON key file.",
+        )
+        gs_metadata_sheet_id = st.text_input(
+            "Metadata sheet ID",
+            placeholder="e.g., 1Vd...the-spreadsheet-id",
+            help="ID of the spreadsheet that maps table names to sheet IDs.",
+        )
+        gs_delegated_email = st.text_input(
+            "Delegated user email (optional)",
+            placeholder="user@example.com",
+            help="Impersonate this user via domain-wide delegation (optional).",
+        )
+
     # Extra config for advanced connectors
     with st.expander("Advanced Configuration (optional)"):
         st.caption("Additional connector-specific properties as key=value pairs, one per line.")
         extra_raw = st.text_area(
             "Extra Properties",
-            placeholder="e.g.,\nredis.table-names=my_table\ngsheets.credentials-path=/path/to/creds.json",
+            placeholder="e.g.,\nredis.table-names=my_table\ngsheets.data-cache-ttl=5m",
             height=100,
         )
 
     submitted = st.form_submit_button("➕ Add Data Source", type="primary", use_container_width=True)
 
     if submitted:
+        is_gsheets = selected_type == DataSourceType.GOOGLE_SHEETS
+
         # Validate required fields
         if not ds_name:
             st.error("Name is required.")
-        elif not ds_host and selected_type != DataSourceType.GOOGLE_SHEETS:
+        elif not ds_host and not is_gsheets:
             st.error("Host is required.")
+        elif is_gsheets and not gs_credentials_path.strip():
+            st.error("Google Sheets requires a credentials path (see Google Sheets settings).")
+        elif is_gsheets and not gs_metadata_sheet_id.strip():
+            st.error("Google Sheets requires a metadata sheet ID (see Google Sheets settings).")
         else:
             # Parse extra config
             extra_config = {}
@@ -259,6 +288,14 @@ with st.form("add_datasource_form", clear_on_submit=True):
                     if "=" in line:
                         key, value = line.split("=", 1)
                         extra_config[key.strip()] = value.strip()
+
+            # Fold the dedicated Google Sheets fields into extra_config. These
+            # friendly keys are mapped to gsheets.* properties in trino_catalog.
+            if is_gsheets:
+                extra_config["credentials_path"] = gs_credentials_path.strip()
+                extra_config["metadata_sheet_id"] = gs_metadata_sheet_id.strip()
+                if gs_delegated_email.strip():
+                    extra_config["delegated_user_email"] = gs_delegated_email.strip()
 
             new_ds = DataSource(
                 name=ds_name.strip().lower().replace(" ", "_"),
@@ -311,4 +348,11 @@ with st.expander("How it works"):
 
     **Docker networking tip:** If your databases run in the same Docker Compose stack,
     use the service name as the host (e.g., `my-postgres` instead of `localhost`).
+
+    **Google Sheets:** No host/port needed. Drop your service-account JSON key into
+    `infra/trino/secrets/`, then set the credentials path to
+    `/etc/trino/secrets/<your-key>.json` and provide the metadata sheet ID. The
+    metadata sheet maps table names to sheet IDs (header row:
+    `Table Name | Sheet ID | Owner | Notes`) and must be shared with the service
+    account's email.
     """)

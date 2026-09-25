@@ -95,6 +95,10 @@ data/datasources.json
 infra/trino/catalog/*.properties
 !infra/trino/catalog/.gitkeep
 
+# Trino connector secrets (Google service-account keys, etc.)
+infra/trino/secrets/*.json
+infra/trino/secrets/*.key
+
 # Docker volumes
 om-mysql-data/
 om-es-data/

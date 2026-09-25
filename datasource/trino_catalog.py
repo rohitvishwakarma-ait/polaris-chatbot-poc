@@ -200,16 +200,32 @@ class TrinoCatalogManager:
         return props
 
     def _gsheets_props(self, ds: DataSource) -> dict[str, str]:
-        props = {
-            "connector.name": "google_sheets",
-            "gsheets.credentials-path": ds.extra_config.get("credentials_path", ""),
-            "gsheets.metadata-sheet-id": ds.extra_config.get("metadata_sheet_id", ""),
+        # NOTE: Trino's Google Sheets connector is named "gsheets" (not
+        # "google_sheets"). Using the wrong name makes Trino reject the catalog.
+        # https://trino.io/docs/current/connector/googlesheets.html
+        props: dict[str, str] = {"connector.name": "gsheets"}
+
+        # Friendly extra_config keys -> Trino property names.
+        # Only emit a property when a value is actually provided so we never
+        # write an empty "gsheets.credentials-path=" that would break the catalog.
+        friendly_map = {
+            "credentials_path": "gsheets.credentials-path",
+            "credentials_key": "gsheets.credentials-key",
+            "metadata_sheet_id": "gsheets.metadata-sheet-id",
+            "delegated_user_email": "gsheets.delegated-user-email",
         }
-        extra = {
-            k: v for k, v in ds.extra_config.items()
-            if k not in ("credentials_path", "metadata_sheet_id")
-        }
-        props.update(extra)
+        for friendly_key, trino_key in friendly_map.items():
+            value = ds.extra_config.get(friendly_key)
+            if value:
+                props[trino_key] = value
+
+        # Pass through any remaining keys verbatim (e.g. raw "gsheets.*" props
+        # or tuning options like gsheets.data-cache-ttl). These take precedence.
+        for key, value in ds.extra_config.items():
+            if key in friendly_map:
+                continue
+            props[key] = value
+
         return props
 
     def _mariadb_props(self, ds: DataSource) -> dict[str, str]:

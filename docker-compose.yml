@@ -63,6 +63,9 @@ services:
     volumes:
       - ./infra/trino/etc:/etc/trino
       - ./infra/trino/catalog:/etc/trino/catalog
+      # Google service-account key files for the gsheets connector.
+      # Reference them in a data source as: /etc/trino/secrets/<your-key>.json
+      - ./infra/trino/secrets:/etc/trino/secrets:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/v1/info"]
       interval: 10s
