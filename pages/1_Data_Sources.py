@@ -8,6 +8,8 @@ properties file) and optionally into OpenMetadata.
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import sys
 
@@ -56,10 +58,20 @@ def _remove_from_openmetadata(service_name: str) -> tuple[bool, str]:
 
 
 def _extra_config_to_text(extra: dict) -> str:
-    """Render an extra_config dict back into key=value lines for editing."""
+    """Render an extra_config dict back into key=value lines for editing.
+
+    Sensitive values (e.g. an embedded base64 service-account key) are omitted
+    so they are never displayed in the UI. They are preserved across edits.
+    """
     if not extra:
         return ""
-    return "\n".join(f"{k}={v}" for k, v in extra.items())
+    return "\n".join(
+        f"{k}={v}" for k, v in extra.items() if k not in _SENSITIVE_EXTRA_KEYS
+    )
+
+
+# extra_config keys whose values are secrets and must never be shown in the UI.
+_SENSITIVE_EXTRA_KEYS = {"credentials_key"}
 
 
 def _parse_extra_config(raw: str) -> dict:
@@ -162,6 +174,12 @@ if datasources:
                         e_password = st.text_input(
                             "Password", value=ds.password, type="password", key=f"epwd_{ds.id}"
                         )
+                    if "credentials_key" in ds.extra_config:
+                        st.caption(
+                            "🔒 An embedded service-account key is stored for this "
+                            "source and hidden here. It is kept on save; add a "
+                            "`credentials_key=` line only to replace it."
+                        )
                     e_extra = st.text_area(
                         "Advanced Properties (key=value per line)",
                         value=_extra_config_to_text(ds.extra_config),
@@ -170,13 +188,18 @@ if datasources:
                     )
                     save = st.form_submit_button("💾 Save Changes", type="primary")
                     if save:
+                        parsed_extra = _parse_extra_config(e_extra)
+                        # Preserve hidden sensitive keys unless the user replaced them.
+                        for _sk in _SENSITIVE_EXTRA_KEYS:
+                            if _sk in ds.extra_config and _sk not in parsed_extra:
+                                parsed_extra[_sk] = ds.extra_config[_sk]
                         updates = {
                             "host": e_host.strip(),
                             "port": int(e_port),
                             "database": e_database.strip(),
                             "username": e_username.strip(),
                             "password": e_password,
-                            "extra_config": _parse_extra_config(e_extra),
+                            "extra_config": parsed_extra,
                         }
                         manager.update(ds.id, updates)
                         st.session_state[f"editing_{ds.id}"] = False
@@ -192,6 +215,46 @@ else:
 # ---------------------------------------------------------------------------
 
 st.subheader("Add New Data Source")
+
+def _resolve_gsheets_credentials(
+    method: str, uploaded_file, pasted_json: str, credentials_path: str
+) -> tuple[dict | None, str | None]:
+    """Resolve Google Sheets credentials from the chosen input method.
+
+    Returns an (extra_config_fragment, error_message) tuple. For upload/paste
+    the raw JSON is validated and base64-encoded into ``credentials_key`` so it
+    can be embedded directly in the catalog properties file (no server file
+    access needed). For the server-path method it returns ``credentials_path``.
+    """
+    if method == "Server file path":
+        if not credentials_path.strip():
+            return None, "Provide the credentials path (inside Trino)."
+        return {"credentials_path": credentials_path.strip()}, None
+
+    # Upload or Paste -> obtain raw JSON text
+    if method == "Upload JSON key":
+        if uploaded_file is None:
+            return None, "Upload the service-account JSON key file."
+        raw = uploaded_file.getvalue().decode("utf-8", errors="replace")
+    else:  # "Paste JSON"
+        if not pasted_json.strip():
+            return None, "Paste the service-account JSON."
+        raw = pasted_json
+
+    # Validate it is well-formed service-account JSON before storing it.
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return None, f"Credentials JSON is not valid JSON: {exc}"
+    if parsed.get("type") != "service_account" or "private_key" not in parsed:
+        return None, (
+            "That JSON does not look like a Google service-account key "
+            "(missing \"type\": \"service_account\" or \"private_key\")."
+        )
+
+    encoded = base64.b64encode(raw.encode("utf-8")).decode("ascii")
+    return {"credentials_key": encoded}, None
+
 
 with st.form("add_datasource_form", clear_on_submit=True):
     col1, col2 = st.columns(2)
@@ -236,14 +299,34 @@ with st.form("add_datasource_form", clear_on_submit=True):
     # Google Sheets — dedicated fields (only used when Type = Google Sheets)
     with st.expander("Google Sheets settings (for Google Sheets type)"):
         st.caption(
-            "Provide a Google service-account key file and the metadata sheet ID. "
-            "Copy the key JSON into `infra/trino/secrets/` — it is mounted into Trino "
-            "at `/etc/trino/secrets/`."
+            "Provide your Google service-account credentials and the metadata sheet ID. "
+            "Uploading or pasting the JSON embeds it directly in this data source's own "
+            "Trino catalog — no server file access needed, so each client can self-serve."
+        )
+        gs_cred_method = st.radio(
+            "How do you want to provide credentials?",
+            options=["Upload JSON key", "Paste JSON", "Server file path"],
+            horizontal=True,
+            help=(
+                "Upload/Paste stores the key inside this catalog (base64) — best for "
+                "multi-client/self-service. Server file path references a file already "
+                "placed on the Trino host — best for a single self-hosted deployment."
+            ),
+        )
+        gs_uploaded_file = st.file_uploader(
+            "Service-account JSON key",
+            type=["json"],
+            help="The JSON key file you downloaded from Google Cloud.",
+        )
+        gs_pasted_json = st.text_area(
+            "…or paste the service-account JSON",
+            placeholder='{\n  "type": "service_account",\n  "project_id": "...",\n  ...\n}',
+            height=120,
         )
         gs_credentials_path = st.text_input(
-            "Credentials path (inside Trino)",
+            "…or credentials path (inside Trino)",
             placeholder="/etc/trino/secrets/my-service-account.json",
-            help="In-container path to the service-account JSON key file.",
+            help="In-container path to the JSON key file (self-hosted only).",
         )
         gs_metadata_sheet_id = st.text_input(
             "Metadata sheet ID",
@@ -270,13 +353,21 @@ with st.form("add_datasource_form", clear_on_submit=True):
     if submitted:
         is_gsheets = selected_type == DataSourceType.GOOGLE_SHEETS
 
+        # Resolve Google Sheets credentials up front so we can validate them.
+        gs_creds: dict | None = None
+        gs_error: str | None = None
+        if is_gsheets:
+            gs_creds, gs_error = _resolve_gsheets_credentials(
+                gs_cred_method, gs_uploaded_file, gs_pasted_json, gs_credentials_path
+            )
+
         # Validate required fields
         if not ds_name:
             st.error("Name is required.")
         elif not ds_host and not is_gsheets:
             st.error("Host is required.")
-        elif is_gsheets and not gs_credentials_path.strip():
-            st.error("Google Sheets requires a credentials path (see Google Sheets settings).")
+        elif is_gsheets and gs_error:
+            st.error(gs_error)
         elif is_gsheets and not gs_metadata_sheet_id.strip():
             st.error("Google Sheets requires a metadata sheet ID (see Google Sheets settings).")
         else:
@@ -292,7 +383,7 @@ with st.form("add_datasource_form", clear_on_submit=True):
             # Fold the dedicated Google Sheets fields into extra_config. These
             # friendly keys are mapped to gsheets.* properties in trino_catalog.
             if is_gsheets:
-                extra_config["credentials_path"] = gs_credentials_path.strip()
+                extra_config.update(gs_creds or {})
                 extra_config["metadata_sheet_id"] = gs_metadata_sheet_id.strip()
                 if gs_delegated_email.strip():
                     extra_config["delegated_user_email"] = gs_delegated_email.strip()
@@ -349,10 +440,11 @@ with st.expander("How it works"):
     **Docker networking tip:** If your databases run in the same Docker Compose stack,
     use the service name as the host (e.g., `my-postgres` instead of `localhost`).
 
-    **Google Sheets:** No host/port needed. Drop your service-account JSON key into
-    `infra/trino/secrets/`, then set the credentials path to
-    `/etc/trino/secrets/<your-key>.json` and provide the metadata sheet ID. The
-    metadata sheet maps table names to sheet IDs (header row:
+    **Google Sheets:** No host/port needed. Provide credentials in one of three ways:
+    upload the service-account JSON, paste it, or point to a file already on the Trino
+    host. Upload/paste embeds the key (base64) directly in this source's own catalog, so
+    each client can self-serve without server access. Also provide the metadata sheet ID.
+    The metadata sheet maps table names to sheet IDs (header row:
     `Table Name | Sheet ID | Owner | Notes`) and must be shared with the service
     account's email.
     """)

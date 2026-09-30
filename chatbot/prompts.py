@@ -54,12 +54,21 @@ TYPE CASTING RULES — critical for avoiding errors:
     - NOTE: Use simple substring patterns (LIKE '%Running%'), NOT JSON-formatted patterns.
     - ALWAYS prefer Redis tables for real-time status, live data, current state, or dashboard queries.
     - If a table description mentions "Redis key-value" with JSON sample data, USE that table for status/state queries.
-12. Redis JOIN rules — Redis _key values have prefixes matching IDs in other tables:
-    - To join a Redis machine table with production_orders: ON rm._key = 'machine:' || po.machine_id
-    - To join a Redis production table with production_orders: ON rp._key = 'production:' || po.order_number
-    - Do NOT join Redis dashboard or shift tables with order tables — they use fixed keys like 'dashboard' or 'shift'.
+12. Redis / key-value JOIN and field-extraction rules:
+    - The _value column holds a JSON document. To use a specific field in a
+      SELECT, WHERE, or JOIN, extract it with json_extract_scalar(_value, '$.field').
+      Example: json_extract_scalar(_value, '$.account_number').
+    - To join a Redis key-value table to a relational table on a shared identifier,
+      match the extracted field to the relational column, CASTing when types differ:
+        ON t.account_number = json_extract_scalar(r._value, '$.account_number')
+        ON c.customer_id = CAST(json_extract_scalar(s._value, '$.customer_id') AS integer)
+    - For simple existence/status filters a substring LIKE on _value is fine
+      (e.g. WHERE _value LIKE '%Frozen%'); for exact field comparisons or joins,
+      use json_extract_scalar instead.
+    - Redis _key values look like '<schema>:<table>:<id>' (e.g. 'live:account:ACC0001').
+      Prefer extracting the identifier from _value rather than parsing _key.
     - Use the EXACT fully-qualified table names from the table list above — never use placeholder names.
-    - Table aliases must be simple identifiers (e.g., "po", "rm") — never use dotted aliases like "pg.po".
+    - Table aliases must be simple identifiers (e.g., "c", "t", "fa") — never use dotted aliases like "pg.po".
     - Combine tables using JOINs in ONE SELECT. Do NOT use UNION unless the user explicitly asks to stack results.
 """
 

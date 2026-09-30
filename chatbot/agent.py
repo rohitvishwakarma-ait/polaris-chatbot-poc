@@ -95,11 +95,13 @@ class AgentState(TypedDict):
 
 
 def retrieve_metadata(state: AgentState, metadata_service) -> dict:
-    """Fetch relevant table metadata from OpenMetadata.
+    """Fetch available table metadata for SQL generation.
 
-    Calls ``metadata_service.search_tables(question)`` and writes the result
-    to ``state["metadata"]``.  On any exception, writes a user-friendly
-    message to ``state["error"]`` and sets ``state["error_source"]``.
+    Calls ``metadata_service.get_all_tables()`` to supply the full set of
+    configured tables (so the LLM can join across data sources), falling back
+    to ``metadata_service.search_tables(question)`` when no tables are listed.
+    Writes the result to ``state["metadata"]``.  On any exception, writes a
+    user-friendly message to ``state["error"]`` and sets ``state["error_source"]``.
 
     Args:
         state: Current agent state.
@@ -110,7 +112,14 @@ def retrieve_metadata(state: AgentState, metadata_service) -> dict:
     """
     question = state["question"]
     try:
-        metadata = metadata_service.search_tables(question)
+        # Provide the full available schema (all configured/synced tables) so the
+        # LLM can join across data sources. Cross-source joins are impossible when
+        # only the keyword-matched subset is supplied, because the model never sees
+        # the other side of the join. Fall back to targeted keyword search only if
+        # the full listing is empty.
+        metadata = metadata_service.get_all_tables(limit=50)
+        if not metadata:
+            metadata = metadata_service.search_tables(question)
         return {"metadata": metadata}
     except Exception as exc:
         logger.error(
