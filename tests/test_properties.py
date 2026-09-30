@@ -1,10 +1,10 @@
 """
-GlassBot property-based tests — all 12 correctness properties from the design doc.
+Polaris property-based tests — correctness properties from the design doc.
 
 Uses Hypothesis as the property-based testing library.
 Each test runs a minimum of 100 iterations (@settings(max_examples=100)).
 
-Set GLASSBOT_SKIP_CONFIG=1 so the module-level Config singleton is not
+Set POLARIS_SKIP_CONFIG=1 so the module-level Config singleton is not
 created (no live environment required for unit/property tests).
 
 **Validates: Requirements 14.4**
@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import os
 
-# Must be set BEFORE any glassbot imports so the module-level singleton
+# Must be set BEFORE any polaris imports so the module-level singleton
 # in config.py is suppressed.
-os.environ.setdefault("GLASSBOT_SKIP_CONFIG", "1")
+os.environ.setdefault("POLARIS_SKIP_CONFIG", "1")
 
 import pytest
 from unittest.mock import MagicMock, patch
@@ -25,7 +25,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 # ---------------------------------------------------------------------------
-# GlassBot imports (safe after GLASSBOT_SKIP_CONFIG is set)
+# Polaris imports (safe after POLARIS_SKIP_CONFIG is set)
 # ---------------------------------------------------------------------------
 from chatbot.agent import build_agent, run_agent
 from chatbot.memory import ConversationMemory

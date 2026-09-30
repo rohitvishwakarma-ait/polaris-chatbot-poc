@@ -1,8 +1,11 @@
 """
-GlassBot SQL Generator.
+Polaris SQL Generator.
 
 Wraps LLM calls to produce Trino-compatible SQL from a user question,
 table metadata context, and conversation history.
+
+The system prompt is now built dynamically from the metadata returned by
+OpenMetadata / Trino introspection — no hardcoded table schemas.
 
 Public API:
   SQLGenerator(llm, prompts)
@@ -18,7 +21,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from chatbot.models import TableMetadata
-from chatbot.prompts import SYSTEM_PROMPT, PromptTemplates
+from chatbot.prompts import PromptTemplates, build_system_prompt
 from exceptions import LLMError
 from utils.helpers import trim_conversation_history
 
@@ -31,8 +34,7 @@ class SQLGenerator:
 
     Args:
         llm: A provider-agnostic LangChain ``BaseChatModel`` instance.
-        prompts: A ``PromptTemplates`` instance supplying the system prompt and
-            metadata renderer.
+        prompts: A ``PromptTemplates`` instance supplying the prompt builders.
     """
 
     def __init__(self, llm: BaseChatModel, prompts: PromptTemplates) -> None:
@@ -51,8 +53,9 @@ class SQLGenerator:
     ) -> str:
         """Generate a SQL query for *question* given *metadata* and *history*.
 
-        Builds the full prompt, calls the LLM, strips any markdown code fences
-        from the response, and returns the clean SQL string.
+        Builds the full prompt dynamically from the provided metadata, calls
+        the LLM, strips any markdown code fences from the response, and
+        returns the clean SQL string.
 
         Args:
             question: The user's natural language question.
@@ -79,7 +82,9 @@ class SQLGenerator:
             else str(response.content)
         )
 
-        return self._strip_fences(raw)
+        cleaned = self._strip_fences(raw)
+        # Defensively keep only the first statement in case the LLM returns several.
+        return self._first_statement(cleaned)
 
     # ------------------------------------------------------------------
     # Prompt construction (separated for testability)
@@ -94,10 +99,13 @@ class SQLGenerator:
         """Assemble the ordered list of messages to send to the LLM.
 
         Message order:
-          1. SystemMessage with the core SQL-generation persona and rules.
-          2. SystemMessage with the rendered table metadata block.
-          3. Trimmed conversation history (most recent turns kept).
-          4. HumanMessage containing the user's question.
+          1. SystemMessage with the dynamically-built SQL-generation persona
+             and table schema (derived from metadata_list).
+          2. Trimmed conversation history (most recent turns kept).
+          3. HumanMessage containing the user's question.
+
+        The system prompt is built dynamically from the metadata — no
+        hardcoded table schemas are used.
 
         Args:
             question: The user's natural language question.
@@ -105,32 +113,19 @@ class SQLGenerator:
             history: Prior conversation messages (may be empty).
 
         Returns:
-            An ordered list of :class:`~langchain_core.messages.BaseMessage`
-            objects ready to be passed to the LLM.
+            An ordered list of BaseMessage objects ready for the LLM.
         """
         messages: list[BaseMessage] = []
 
-        # 1. Core SQL-generation persona with authoritative table list
-        messages.append(SystemMessage(content=SYSTEM_PROMPT))
+        # 1. Dynamic system prompt built from the actual metadata
+        system_prompt = self._prompts.build_system_prompt(metadata_list)
+        messages.append(SystemMessage(content=system_prompt))
 
-        # 2. Additional context from OpenMetadata (treat as supplementary only)
-        # IMPORTANT: The system prompt's table list is authoritative.
-        # Only use FQNs from the system prompt — never from this metadata block.
-        metadata_text = self._prompts.render_metadata(metadata_list)
-        messages.append(
-            SystemMessage(content=(
-                "Additional context from metadata catalog (for reference only):\n"
-                f"{metadata_text}\n\n"
-                "IMPORTANT: Ignore any FQNs shown above. "
-                "Use ONLY the exact FQNs defined in your instructions above."
-            ))
-        )
-
-        # 3. Trimmed conversation history
+        # 2. Trimmed conversation history
         trimmed_history = trim_conversation_history(history)
         messages.extend(trimmed_history)
 
-        # 4. Current user question
+        # 3. Current user question
         messages.append(HumanMessage(content=question))
 
         return messages
@@ -157,3 +152,54 @@ class SQLGenerator:
         if match:
             return match.group(1).strip()
         return text.strip()
+
+    @staticmethod
+    def _first_statement(sql: str) -> str:
+        """Return only the first SQL statement when multiple are present.
+
+        Trino executes a single statement per request. LLMs sometimes emit
+        several statements (separated by semicolons or stacked back-to-back).
+        This keeps only the first complete statement.
+
+        Strategy:
+        1. If there's a semicolon, take everything before the first one.
+        2. Otherwise, if multiple statements are stacked (a new SELECT/WITH
+           starts on its own line after a complete query), keep up to the
+           start of the second statement.
+        """
+        text = sql.strip()
+
+        # Case 1: semicolon-separated — take the first statement
+        if ";" in text:
+            first = text.split(";", 1)[0].strip()
+            if first:
+                return first
+
+        # Case 2: stacked statements without semicolons.
+        # Find a line that starts a new top-level query after the first one.
+        lines = text.split("\n")
+        collected: list[str] = []
+        started = False
+        for line in lines:
+            stripped = line.strip().upper()
+            starts_new_query = stripped.startswith("SELECT ") or stripped.startswith("WITH ")
+            if started and starts_new_query:
+                # Second statement begins — stop here.
+                break
+            if starts_new_query:
+                started = True
+            collected.append(line)
+
+        result = "\n".join(collected).strip()
+        result = result or text
+
+        # Strip a trailing dangling set-operator (UNION/INTERSECT/EXCEPT [ALL])
+        # left over when the LLM intended a second statement.
+        result = re.sub(
+            r"\s+(UNION|INTERSECT|EXCEPT)(\s+ALL)?\s*$",
+            "",
+            result,
+            flags=re.IGNORECASE,
+        ).strip()
+
+        return result

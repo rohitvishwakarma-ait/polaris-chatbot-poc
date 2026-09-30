@@ -197,3 +197,116 @@ def format_execution_time(ms: float) -> str:
     if ms < 1000.0:
         return f"{ms:.2f}ms"
     return f"{ms / 1000.0:.2f}s"
+
+
+def _is_numeric_series(series: Any) -> bool:
+    """Return ``True`` when a pandas Series holds numeric values.
+
+    Uses pandas' own dtype introspection so booleans are treated as
+    non-numeric (they make poor chart values), while ints and floats are
+    treated as numeric.
+    """
+    import pandas  # noqa: PLC0415 — intentional lazy import
+
+    from pandas.api import types as pdt  # noqa: PLC0415
+
+    if pdt.is_bool_dtype(series):
+        return False
+    if pdt.is_numeric_dtype(series):
+        return True
+    # Fall back: try to coerce; if a majority of non-null values parse as
+    # numbers, treat the column as numeric (Trino sometimes returns numeric
+    # values as strings).
+    non_null = series.dropna()
+    if non_null.empty:
+        return False
+    coerced = pandas.to_numeric(non_null, errors="coerce")
+    return coerced.notna().mean() >= 0.8
+
+
+def analyze_columns(df: Any) -> dict:
+    """Inspect a DataFrame and classify its columns for charting.
+
+    Parameters
+    ----------
+    df:
+        A pandas ``DataFrame`` produced by :func:`rows_to_dataframe`.
+
+    Returns
+    -------
+    dict
+        A dict with three keys:
+
+        ``numeric``
+            List of column names holding numeric values (candidate Y axes).
+        ``categorical``
+            List of column names holding non-numeric values (candidate X axes).
+        ``all``
+            All column names in their original order.
+    """
+    numeric: list[str] = []
+    categorical: list[str] = []
+    for col in df.columns:
+        if _is_numeric_series(df[col]):
+            numeric.append(str(col))
+        else:
+            categorical.append(str(col))
+    return {
+        "numeric": numeric,
+        "categorical": categorical,
+        "all": [str(c) for c in df.columns],
+    }
+
+
+def is_chartable(df: Any) -> bool:
+    """Return ``True`` when a DataFrame has data worth visualising.
+
+    Charts are only meaningful when there is at least one numeric column and
+    more than one row of data.
+    """
+    if df is None or getattr(df, "empty", True):
+        return False
+    if len(df) < 2:
+        return False
+    return len(analyze_columns(df)["numeric"]) >= 1
+
+
+def coerce_numeric_columns(df: Any, columns: list[str]) -> Any:
+    """Return a copy of *df* with *columns* coerced to numeric dtype.
+
+    Non-parseable values become ``NaN``.  Used before charting so string
+    numerics from Trino render correctly.
+    """
+    import pandas  # noqa: PLC0415 — intentional lazy import
+
+    out = df.copy()
+    for col in columns:
+        if col in out.columns:
+            out[col] = pandas.to_numeric(out[col], errors="coerce")
+    return out
+
+
+def suggest_chart_type(df: Any) -> str:
+    """Suggest a sensible default chart type for a DataFrame.
+
+    Heuristics
+    ----------
+    * A datetime-like or clearly ordered X axis favours a line chart.
+    * Otherwise a bar chart is the safe, readable default.
+
+    Returns one of ``"Bar"``, ``"Line"``, ``"Area"``, ``"Scatter"``.
+    """
+    from pandas.api import types as pdt  # noqa: PLC0415
+
+    cols = analyze_columns(df)
+    categorical = cols["categorical"]
+
+    # If the natural X axis looks like a date/time, a line chart reads best.
+    for col in categorical:
+        if pdt.is_datetime64_any_dtype(df[col]):
+            return "Line"
+        lowered = col.lower()
+        if any(tok in lowered for tok in ("date", "time", "month", "year", "day")):
+            return "Line"
+
+    return "Bar"

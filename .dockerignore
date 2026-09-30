@@ -1,0 +1,13 @@
+.venv
+venv
+.git
+.hypothesis
+__pycache__
+*.pyc
+.pytest_cache
+data/datasources.json
+infra/trino/catalog/*.properties
+*.log
+.env
+docs
+tests

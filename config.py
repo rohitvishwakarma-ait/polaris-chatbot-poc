@@ -1,20 +1,16 @@
 """
-GlassBot configuration module.
+Polaris configuration module.
 
 Reads all external-service settings from environment variables (or a ``.env``
-file loaded by ``python-dotenv``) using ``pydantic-settings``.  A
+file loaded by ``python-dotenv``) using simple os.environ access.  A
 ``ConfigurationError`` is raised at *import time* if any required variable is
 absent, ensuring the application exits with a clear message before the UI loads.
 
 Required variables (absence causes a startup error):
-    LLM_PROVIDER, TRINO_HOST, TRINO_CATALOG, TRINO_SCHEMA,
-    OPENMETADATA_URL, OPENMETADATA_API_TOKEN
+    LLM_PROVIDER, TRINO_HOST, OPENMETADATA_URL, OPENMETADATA_API_TOKEN
 
-Optional / conditionally required:
-    OPENAI_API_KEY — required when LLM_PROVIDER starts with "openai";
-                     left as Optional[str] at the Config level so that
-                     other providers (Anthropic, Ollama, Azure) can start
-                     without it present.
+Optional (have sensible defaults for Docker Compose):
+    TRINO_PORT, TRINO_CATALOG, TRINO_SCHEMA, TRINO_USER, APP_NAME
 """
 
 from __future__ import annotations
@@ -35,8 +31,6 @@ load_dotenv()
 REQUIRED_CONFIG_VARS: tuple[str, ...] = (
     "LLM_PROVIDER",
     "TRINO_HOST",
-    "TRINO_CATALOG",
-    "TRINO_SCHEMA",
     "OPENMETADATA_URL",
     "OPENMETADATA_API_TOKEN",
 )
@@ -48,7 +42,7 @@ def _require(name: str) -> str:
     if not value:
         raise ConfigurationError(
             f"Required environment variable '{name}' is missing or empty. "
-            f"Set it in your shell or in the .env file before starting GlassBot."
+            f"Set it in your shell or in the .env file before starting Polaris."
         )
     return value
 
@@ -61,7 +55,7 @@ def _optional(name: str) -> Optional[str]:
 
 class Config:
     """
-    Centralised configuration for GlassBot.
+    Centralised configuration for Polaris.
 
     All fields are populated from environment variables at instantiation.
     Pass ``env`` as a mapping to override the real environment (useful for
@@ -82,7 +76,7 @@ class Config:
                 if not value:
                     raise ConfigurationError(
                         f"Required environment variable '{name}' is missing or empty. "
-                        f"Set it in your shell or in the .env file before starting GlassBot."
+                        f"Set it in your shell or in the .env file before starting Polaris."
                     )
                 return value
             return _require(name)
@@ -104,12 +98,13 @@ class Config:
                     f"Environment variable '{name}' must be an integer, got: {raw!r}"
                 )
 
+        # ---- Application branding -------------------------------------------
+        self.APP_NAME: str = get_optional("APP_NAME") or "Polaris"
+
         # ---- LLM provider --------------------------------------------------
         self.LLM_PROVIDER: str = get_required("LLM_PROVIDER")
 
         # OPENAI_API_KEY is conditionally required (needed for openai provider).
-        # We store it as Optional here; components that need it should validate
-        # its presence when the openai provider is active.
         self.OPENAI_API_KEY: Optional[str] = get_optional("OPENAI_API_KEY")
         self.AZURE_OPENAI_ENDPOINT: Optional[str] = get_optional("AZURE_OPENAI_ENDPOINT")
         self.AZURE_OPENAI_API_KEY: Optional[str] = get_optional("AZURE_OPENAI_API_KEY")
@@ -124,9 +119,9 @@ class Config:
         # ---- Trino ---------------------------------------------------------
         self.TRINO_HOST: str = get_required("TRINO_HOST")
         self.TRINO_PORT: int = get_int("TRINO_PORT", default=8080)
-        self.TRINO_CATALOG: str = get_required("TRINO_CATALOG")
-        self.TRINO_SCHEMA: str = get_required("TRINO_SCHEMA")
-        self.TRINO_USER: str = get_optional("TRINO_USER") or "glassbot"
+        self.TRINO_CATALOG: str = get_optional("TRINO_CATALOG") or "system"
+        self.TRINO_SCHEMA: str = get_optional("TRINO_SCHEMA") or "runtime"
+        self.TRINO_USER: str = get_optional("TRINO_USER") or "polaris"
 
         # ---- OpenMetadata --------------------------------------------------
         self.OPENMETADATA_URL: str = get_required("OPENMETADATA_URL")
@@ -134,16 +129,16 @@ class Config:
 
         # ---- Logging -------------------------------------------------------
         self.LOG_LEVEL: str = get_optional("LOG_LEVEL") or "INFO"
-        self.LOG_FILE: str = get_optional("LOG_FILE") or "glassbot.log"
+        self.LOG_FILE: str = get_optional("LOG_FILE") or "polaris.log"
 
 
 # ---------------------------------------------------------------------------
 # Module-level singleton — created at import time during normal application
-# startup.  The ``GLASSBOT_SKIP_CONFIG`` environment variable can be set to
+# startup.  The ``POLARIS_SKIP_CONFIG`` environment variable can be set to
 # any non-empty value to suppress singleton creation; this is intended
 # exclusively for unit tests that import ``Config`` without a full environment.
 # ---------------------------------------------------------------------------
-if not os.environ.get("GLASSBOT_SKIP_CONFIG"):
+if not os.environ.get("POLARIS_SKIP_CONFIG") and not os.environ.get("GLASSBOT_SKIP_CONFIG"):
     try:
         config = Config()
     except ConfigurationError:

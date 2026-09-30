@@ -1,35 +1,41 @@
 """
-GlassBot domain exception hierarchy.
+Polaris domain exception hierarchy.
 
-All application-level exceptions derive from ``GlassBotError`` so callers can
-catch the entire family with a single ``except GlassBotError`` clause, or
+All application-level exceptions derive from ``PolarisError`` so callers can
+catch the entire family with a single ``except PolarisError`` clause, or
 target a specific sub-class for granular error handling.
+
+For backward compatibility, ``GlassBotError`` is kept as an alias.
 """
 
 
-class GlassBotError(Exception):
-    """Base class for all GlassBot application errors."""
+class PolarisError(Exception):
+    """Base class for all Polaris application errors."""
 
 
-class MetadataConnectivityError(GlassBotError):
+# Backward compatibility alias
+GlassBotError = PolarisError
+
+
+class MetadataConnectivityError(PolarisError):
     """Raised when the OpenMetadata service is unreachable (network / timeout)."""
 
 
-class MetadataNotFoundError(GlassBotError):
+class MetadataNotFoundError(PolarisError):
     """Raised when OpenMetadata returns no tables matching the user question."""
 
 
-class SQLValidationError(GlassBotError):
+class SQLValidationError(PolarisError):
     """Raised when the SQLValidator rejects a generated SQL statement."""
 
 
-class QueryExecutionError(GlassBotError):
+class QueryExecutionError(PolarisError):
     """Raised when Trino returns a query execution error."""
 
 
-class LLMError(GlassBotError):
+class LLMError(PolarisError):
     """Raised when an LLM API call fails or times out."""
 
 
-class ConfigurationError(GlassBotError):
+class ConfigurationError(PolarisError):
     """Raised at startup when a required environment variable is missing or invalid."""

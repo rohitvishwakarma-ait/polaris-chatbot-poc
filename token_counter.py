@@ -5,43 +5,72 @@ import sys
 
 # Setup path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-os.environ['GLASSBOT_SKIP_CONFIG'] = '1'
+os.environ['POLARIS_SKIP_CONFIG'] = '1'
 
 import tiktoken
-from chatbot.prompts import SYSTEM_PROMPT, render_metadata
-from chatbot.metadata_service import _FALLBACK_TABLES
+from chatbot.prompts import build_system_prompt, render_metadata
+from chatbot.models import TableMetadata, ColumnInfo
 
 enc = tiktoken.encoding_for_model("gpt-4o")  # cl100k_base works for most models
+
+# Example tables to demonstrate token counting (replace with your actual metadata)
+_EXAMPLE_TABLES = [
+    TableMetadata(
+        fqn="my_postgres.public.orders",
+        name="orders",
+        description="Customer orders table",
+        columns=[
+            ColumnInfo("id", "integer", "Primary key"),
+            ColumnInfo("customer_name", "varchar", "Customer name"),
+            ColumnInfo("total", "decimal", "Order total"),
+            ColumnInfo("status", "varchar", "Order status"),
+            ColumnInfo("created_at", "timestamp", "Creation timestamp"),
+        ],
+        tags=["Sales"],
+    ),
+    TableMetadata(
+        fqn="my_postgres.public.products",
+        name="products",
+        description="Product catalog",
+        columns=[
+            ColumnInfo("id", "integer", "Primary key"),
+            ColumnInfo("name", "varchar", "Product name"),
+            ColumnInfo("price", "decimal", "Unit price"),
+            ColumnInfo("category", "varchar", "Category"),
+        ],
+        tags=["Catalog"],
+    ),
+]
+
 
 def count_tokens(text: str) -> int:
     return len(enc.encode(text))
 
-# ----- Measure fixed costs -----
-system_prompt_tokens = count_tokens(SYSTEM_PROMPT)
-metadata_context_tokens = count_tokens(render_metadata(_FALLBACK_TABLES))
+
+# ----- Measure costs with example tables -----
+system_prompt = build_system_prompt(_EXAMPLE_TABLES)
+system_prompt_tokens = count_tokens(system_prompt)
+metadata_context_tokens = count_tokens(render_metadata(_EXAMPLE_TABLES))
 
 print("=" * 60)
-print("TOKEN USAGE ANALYSIS — GlassBot")
+print("TOKEN USAGE ANALYSIS — Polaris")
 print("=" * 60)
+print()
+print(f"Using {len(_EXAMPLE_TABLES)} example table(s) for estimation.")
 print()
 print("FIXED COSTS (same for every query):")
 print(f"  System prompt:      {system_prompt_tokens:,} tokens")
-print(f"  Metadata context:   {metadata_context_tokens:,} tokens")
-print(f"  Fixed total:        {system_prompt_tokens + metadata_context_tokens:,} tokens")
+print(f"  (Metadata embedded in prompt, no separate context needed)")
+print(f"  Fixed total:        {system_prompt_tokens:,} tokens")
 print()
 
 # ----- Sample questions to measure variable costs -----
 sample_questions = [
-    "Show me all delivered orders",
-    "Give me completed production orders",
-    "What is the average temperature for machine M01?",
-    "Show me production targets where actual qty is less than planned",
-    "Show all customer orders along with their corresponding production orders",
-    "Which machines are currently running?",
-    "How many orders does each customer have?",
-    "Show me defects by machine for last week",
-    "What is today's production target?",
-    "Give me dashboard summary",
+    "Show me all orders",
+    "What products are in the catalog?",
+    "How many orders per customer?",
+    "Show me orders with total above 100",
+    "List products by category",
 ]
 
 print(f"VARIABLE COSTS (sample of {len(sample_questions)} questions):")
@@ -52,12 +81,10 @@ total_output_estimate = 0
 
 for i, q in enumerate(sample_questions, 1):
     q_tokens = count_tokens(q)
-    # Input = system_prompt + metadata + question + overhead
-    input_tokens = system_prompt_tokens + metadata_context_tokens + q_tokens + 20  # 20 for message framing
-    output_estimate = 80  # avg SQL output is ~80 tokens
+    input_tokens = system_prompt_tokens + q_tokens + 20
+    output_estimate = 80
 
-    # Call 2: ResponseFormatter
-    summary_input = 150 + 200  # summary prompt + sample results
+    summary_input = 150 + 200
     summary_output = 100
 
     total_per_query = input_tokens + output_estimate + summary_input + summary_output
@@ -80,5 +107,6 @@ print(f"  100 queries:        ~{avg_per_query * 100:,} tokens")
 print(f"  500 queries:        ~{avg_per_query * 500:,} tokens")
 print(f"  1000 queries:       ~{avg_per_query * 1000:,} tokens")
 print()
-print("NOTE: These estimates assume no conversation history.")
+print("NOTE: Token usage scales with the number of tables/columns configured.")
+print("      More data sources = larger system prompt = higher cost per query.")
 print("      Multi-turn adds ~200-800 tokens per prior turn.")

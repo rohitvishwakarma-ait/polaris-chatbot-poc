@@ -1,5 +1,5 @@
 """
-GlassBot LangGraph agent orchestrator.
+Polaris LangGraph agent orchestrator.
 
 This module defines ``AgentState`` — the shared state TypedDict that flows
 through every node of the LangGraph ``StateGraph`` — and builds the full
@@ -95,11 +95,13 @@ class AgentState(TypedDict):
 
 
 def retrieve_metadata(state: AgentState, metadata_service) -> dict:
-    """Fetch relevant table metadata from OpenMetadata.
+    """Fetch available table metadata for SQL generation.
 
-    Calls ``metadata_service.search_tables(question)`` and writes the result
-    to ``state["metadata"]``.  On any exception, writes a user-friendly
-    message to ``state["error"]`` and sets ``state["error_source"]``.
+    Calls ``metadata_service.get_all_tables()`` to supply the full set of
+    configured tables (so the LLM can join across data sources), falling back
+    to ``metadata_service.search_tables(question)`` when no tables are listed.
+    Writes the result to ``state["metadata"]``.  On any exception, writes a
+    user-friendly message to ``state["error"]`` and sets ``state["error_source"]``.
 
     Args:
         state: Current agent state.
@@ -110,7 +112,14 @@ def retrieve_metadata(state: AgentState, metadata_service) -> dict:
     """
     question = state["question"]
     try:
-        metadata = metadata_service.search_tables(question)
+        # Provide the full available schema (all configured/synced tables) so the
+        # LLM can join across data sources. Cross-source joins are impossible when
+        # only the keyword-matched subset is supplied, because the model never sees
+        # the other side of the join. Fall back to targeted keyword search only if
+        # the full listing is empty.
+        metadata = metadata_service.get_all_tables(limit=50)
+        if not metadata:
+            metadata = metadata_service.search_tables(question)
         return {"metadata": metadata}
     except Exception as exc:
         logger.error(
@@ -119,8 +128,16 @@ def retrieve_metadata(state: AgentState, metadata_service) -> dict:
             exc,
             exc_info=True,
         )
+        # Provide a helpful error that guides the user
+        error_msg = str(exc)
+        if "No tables found" in error_msg or "configure data sources" in error_msg.lower():
+            error_msg = (
+                "No data sources are configured yet. "
+                "Please go to the **Data Sources** page (sidebar) to add a database connection. "
+                "Once added, Polaris will automatically discover your tables and you can start querying."
+            )
         return {
-            "error": f"Could not retrieve table metadata: {exc}",
+            "error": error_msg,
             "error_source": "MetadataService",
         }
 
@@ -365,7 +382,7 @@ def build_agent(
     trino_client=None,
     response_formatter=None,
 ):
-    """Build and compile the LangGraph StateGraph for GlassBot.
+    """Build and compile the LangGraph StateGraph for Polaris.
 
     Instantiates the required services if they are not provided, then wires
     them into the graph nodes via ``functools.partial``.
@@ -386,13 +403,13 @@ def build_agent(
         invoke via ``.invoke()`` or ``.stream()``.
     """
     # --- Instantiate services from config when overrides are not provided ---
-    if metadata_service is None:
-        from chatbot.metadata_service import MetadataService
-        metadata_service = MetadataService(config)
-
     if trino_client is None:
         from chatbot.trino_client import TrinoClient
         trino_client = TrinoClient(config)
+
+    if metadata_service is None:
+        from chatbot.metadata_service import MetadataService
+        metadata_service = MetadataService(config, trino_client=trino_client)
 
     if sql_generator is None or response_formatter is None:
         llm = _build_llm(config)
@@ -462,12 +479,7 @@ def build_agent(
     # respond is the terminal node — route to END
     graph.add_edge("respond", END)
 
-    # --- Compile the graph (no checkpointer) ---------------------------------
-    # Conversation memory is managed externally via ConversationMemory and the
-    # conversation_history field in AgentState.  Using MemorySaver caused
-    # segfaults because LangGraph's checkpoint merge attempts to
-    # serialize/deserialize the QueryResult and TableMetadata dataclasses
-    # through pyarrow on subsequent invocations.
+    # --- Compile the graph -----------------------------------------------------
     compiled = graph.compile()
     return compiled
 

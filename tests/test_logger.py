@@ -18,7 +18,7 @@ import os
 import tempfile
 
 # Suppress config singleton so tests can import the logger module freely.
-os.environ.setdefault("GLASSBOT_SKIP_CONFIG", "1")
+os.environ.setdefault("POLARIS_SKIP_CONFIG", "1")
 
 
 class TestGetLoggerReturnsNamedLogger:
@@ -116,7 +116,7 @@ class TestLogLevelDefaults:
     """Log level defaults to INFO when config is None."""
 
     def test_root_logger_level_is_info_by_default(self):
-        """With GLASSBOT_SKIP_CONFIG=1, config is None → level defaults to INFO."""
+        """With POLARIS_SKIP_CONFIG=1, config is None → level defaults to INFO."""
         import utils.logger as logger_module  # noqa: F401 — triggers setup
         root = logging.getLogger()
         assert root.level == logging.INFO

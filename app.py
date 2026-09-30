@@ -1,8 +1,11 @@
 """
-GlassBot Streamlit UI entry point.
+Polaris Streamlit UI entry point.
 
-This module is the top-level Streamlit application for GlassBot. It:
+This module is the top-level Streamlit application for Polaris — an AI-powered
+analytics assistant that works with any data source configured via the
+Data Sources page.
 
+It:
 - Initialises session state (message history, thread ID, compiled LangGraph agent)
 - Renders the sidebar (title, description, "Clear Conversation" button)
 - Renders the chat history (user and assistant messages with expandable SQL and metadata)
@@ -22,7 +25,7 @@ from __future__ import annotations
 import os
 import sys
 
-_APP_DIR = os.path.dirname(os.path.abspath(__file__))   # .../polaris-poc
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Load .env from the root directory
 try:
@@ -39,7 +42,7 @@ import streamlit as st
 # ---------------------------------------------------------------------------
 # Page config — must be the very first Streamlit call in the script
 # ---------------------------------------------------------------------------
-st.set_page_config(page_title="GlassBot", page_icon="🏭", layout="wide")
+st.set_page_config(page_title="Polaris", page_icon="⭐", layout="wide")
 
 # ---------------------------------------------------------------------------
 # Guard: attempt to import Config and catch ConfigurationError early so the
@@ -50,11 +53,17 @@ try:
     from config import Config
     from exceptions import ConfigurationError
     from chatbot.agent import build_agent, run_agent
-    from utils.helpers import format_execution_time
+    from utils.helpers import (
+        rows_to_dataframe,
+        format_execution_time,
+        analyze_columns,
+        is_chartable,
+        coerce_numeric_columns,
+        suggest_chart_type,
+    )
 except Exception as _import_exc:
     _CONFIG_ERROR = str(_import_exc)
-    # Define a stub so the rest of the file can reference ConfigurationError
-    # even when the import failed.
+
     class ConfigurationError(Exception):  # type: ignore[no-redef]
         pass
 
@@ -65,19 +74,7 @@ except Exception as _import_exc:
 
 
 def _build_metadata_summary(metadata: list[Any] | None) -> str:
-    """Return a brief human-readable string listing the table names/FQNs used.
-
-    Args:
-        metadata: A list of ``TableMetadata`` objects, or ``None``.
-
-    Returns:
-        A multi-line string with one table per line, e.g.::
-
-            glass_db.public.bottles (bottles)
-            glass_db.public.orders (orders)
-
-        Returns an empty string when *metadata* is ``None`` or empty.
-    """
+    """Return a brief human-readable string listing the table names/FQNs used."""
     if not metadata:
         return ""
     lines = []
@@ -99,22 +96,7 @@ def _build_metadata_summary(metadata: list[Any] | None) -> str:
 
 
 def _render_assistant_message(message: dict) -> None:
-    """Render the content of one assistant message inside a ``st.chat_message`` block.
-
-    Renders:
-    - ``message["content"]`` as markdown (natural language summary or error text)
-    - Optional SQL expander (``message["sql"]``)
-    - Optional metadata expander (``message["metadata_summary"]``)
-    - Optional query result table + row count + execution time
-      (``message["rows"]``, ``message["row_count"]``, etc.)
-    - Error box if ``message["error"]`` is truthy
-
-    Args:
-        message: A dict with keys ``role``, ``content``, and optionally
-            ``sql``, ``metadata_summary``, ``rows``, ``row_count``,
-            ``execution_time_ms``, ``truncated``, ``truncation_limit``,
-            ``error``.
-    """
+    """Render the content of one assistant message inside a st.chat_message block."""
     if message.get("error"):
         st.error(message["content"])
         return
@@ -145,9 +127,104 @@ def _render_assistant_message(message: dict) -> None:
             )
         if message.get("truncated"):
             st.info(
-                f"⚠️ Result truncated to {message.get('truncation_limit')} rows. "
+                f"Result truncated to {query_result.truncation_limit} rows. "
                 "Refine your query to see more specific data."
             )
+
+        # Interactive chart section (only when the data is chartable).
+        _render_chart_section(df, key_prefix=message.get("message_id", "msg"))
+
+
+# ---------------------------------------------------------------------------
+# Helper: render an interactive chart section for a result DataFrame
+# ---------------------------------------------------------------------------
+
+
+def _render_chart_section(df: Any, key_prefix: str) -> None:
+    """Render an expandable chart builder below a result table.
+
+    Lets the user choose a chart type, X axis, and one or more Y-axis series,
+    then draws the chart using Streamlit's native charting. Does nothing when
+    the data is not suitable for charting.
+
+    Args:
+        df: The pandas DataFrame of query results.
+        key_prefix: A stable, unique prefix for all widget keys so that charts
+            on different messages never collide across reruns.
+    """
+    if not is_chartable(df):
+        return
+
+    cols = analyze_columns(df)
+    numeric_cols = cols["numeric"]
+    categorical_cols = cols["categorical"]
+
+    chart_types = ["Bar", "Line", "Area", "Scatter"]
+    default_type = suggest_chart_type(df)
+    default_type_idx = (
+        chart_types.index(default_type) if default_type in chart_types else 0
+    )
+
+    # X-axis candidates: prefer categorical/label columns, but allow any column.
+    x_candidates = categorical_cols + [
+        c for c in cols["all"] if c not in categorical_cols
+    ]
+    default_x_idx = 0
+
+    with st.expander("📊 Visualize", expanded=False):
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            chart_type = st.selectbox(
+                "Chart type",
+                chart_types,
+                index=default_type_idx,
+                key=f"{key_prefix}_chart_type",
+            )
+        with c2:
+            x_axis = st.selectbox(
+                "X axis",
+                x_candidates,
+                index=default_x_idx if x_candidates else 0,
+                key=f"{key_prefix}_x_axis",
+            )
+
+        # Y-axis series: numeric columns, excluding the chosen X axis.
+        y_options = [c for c in numeric_cols if c != x_axis]
+        if not y_options:
+            st.caption("No numeric columns available to plot on the Y axis.")
+            return
+
+        y_axes = st.multiselect(
+            "Y axis (values)",
+            y_options,
+            default=y_options[:1],
+            key=f"{key_prefix}_y_axes",
+        )
+
+        if not y_axes:
+            st.caption("Select at least one value column to draw the chart.")
+            return
+
+        # Build a clean plotting frame with numeric Y columns coerced.
+        plot_df = coerce_numeric_columns(df, y_axes)
+        used_cols = [x_axis] + [c for c in y_axes if c != x_axis]
+        plot_df = plot_df[used_cols].dropna(subset=y_axes, how="all")
+
+        if plot_df.empty:
+            st.caption("No valid numeric data to plot for the current selection.")
+            return
+
+        try:
+            if chart_type == "Bar":
+                st.bar_chart(plot_df, x=x_axis, y=y_axes)
+            elif chart_type == "Line":
+                st.line_chart(plot_df, x=x_axis, y=y_axes)
+            elif chart_type == "Area":
+                st.area_chart(plot_df, x=x_axis, y=y_axes)
+            elif chart_type == "Scatter":
+                st.scatter_chart(plot_df, x=x_axis, y=y_axes)
+        except Exception as exc:  # noqa: BLE001
+            st.warning(f"Could not render chart: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -156,21 +233,7 @@ def _render_assistant_message(message: dict) -> None:
 
 
 def _state_to_assistant_message(state: dict) -> dict:
-    """Convert a final ``AgentState`` dict into a chat message dict for storage.
-
-    Stores only plain-Python-serializable data (strings, ints, floats, lists
-    of dicts) in session state.  Avoids storing pandas DataFrames or custom
-    dataclasses which trigger pyarrow serialization on every st.rerun() and
-    can cause segfaults with pyarrow 25.
-
-    Args:
-        state: The ``AgentState`` dict returned by :func:`run_agent`.
-
-    Returns:
-        A dict with keys ``role``, ``content``, and optionally
-        ``sql``, ``metadata_summary``, ``rows``, ``row_count``,
-        ``execution_time_ms``, ``truncated``, ``truncation_limit``, ``error``.
-    """
+    """Convert a final AgentState dict into a chat message dict for storage."""
     error = state.get("error")
     if error:
         return {
@@ -187,6 +250,8 @@ def _state_to_assistant_message(state: dict) -> dict:
     msg: dict = {
         "role": "assistant",
         "content": summary,
+        # Stable id so chart widgets get unique, rerun-safe keys.
+        "message_id": str(uuid.uuid4()),
     }
     if sql:
         msg["sql"] = sql
@@ -209,14 +274,7 @@ def _state_to_assistant_message(state: dict) -> dict:
 
 
 def _init_session_state() -> None:
-    """Initialise Streamlit session state keys if they are not yet set.
-
-    Sets:
-    - ``st.session_state.messages``: empty list of chat message dicts
-    - ``st.session_state.thread_id``: a fresh UUID string
-    - ``st.session_state.agent``: the compiled LangGraph agent (built once)
-    - ``st.session_state.agent_error``: error string if agent build failed
-    """
+    """Initialise Streamlit session state keys if they are not yet set."""
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
@@ -237,7 +295,7 @@ def _init_session_state() -> None:
                 st.session_state.agent_error = str(exc)
             except Exception as exc:  # noqa: BLE001
                 st.session_state.agent_error = (
-                    f"Unexpected error initialising GlassBot: {exc}"
+                    f"Unexpected error initialising Polaris: {exc}"
                 )
 
 
@@ -255,10 +313,11 @@ def main() -> None:
     # Sidebar
     # -----------------------------------------------------------------------
     with st.sidebar:
-        st.title("🏭 GlassBot")
+        st.title("⭐ Polaris")
         st.markdown(
-            "Ask questions about glass bottle manufacturing data in plain English. "
-            "GlassBot generates Trino SQL, executes it, and explains the results."
+            "Ask questions about your data in plain English. "
+            "Polaris generates Trino SQL, executes it across your configured "
+            "data sources, and explains the results."
         )
         st.divider()
 
@@ -267,24 +326,26 @@ def main() -> None:
             st.session_state.thread_id = str(uuid.uuid4())
             st.rerun()
 
+        st.divider()
+        st.caption("📌 Use the **Data Sources** page to add databases.")
+
     # -----------------------------------------------------------------------
     # Page title
     # -----------------------------------------------------------------------
-    st.title("🏭 GlassBot")
-    st.caption("AI-powered analytics assistant for glass bottle manufacturing")
+    st.title("⭐ Polaris")
+    st.caption("AI-powered analytics assistant — ask questions about any connected data source")
 
     # -----------------------------------------------------------------------
     # Show configuration error prominently and stop if the agent failed to build
     # -----------------------------------------------------------------------
     if st.session_state.get("agent_error"):
         st.error(
-            "**GlassBot could not start — configuration error**\n\n"
+            "**Polaris could not start — configuration error**\n\n"
             f"{st.session_state.agent_error}\n\n"
             "**Setup instructions:**\n"
             "1. Copy `.env.example` to `.env` in the root directory.\n"
             "2. Fill in all required values: `LLM_PROVIDER`, `TRINO_HOST`, "
-            "`TRINO_CATALOG`, `TRINO_SCHEMA`, `OPENMETADATA_URL`, "
-            "`OPENMETADATA_API_TOKEN`.\n"
+            "`OPENMETADATA_URL`, `OPENMETADATA_API_TOKEN`.\n"
             "3. Restart the Streamlit app."
         )
         st.stop()
@@ -292,8 +353,12 @@ def main() -> None:
     # -----------------------------------------------------------------------
     # Render existing chat history
     # -----------------------------------------------------------------------
-    for message in st.session_state.messages:
+    for idx, message in enumerate(st.session_state.messages):
         role = message.get("role", "user")
+        # Ensure every assistant message has a stable id for widget keys,
+        # even ones created before message_id existed.
+        if role == "assistant" and not message.get("message_id"):
+            message["message_id"] = f"hist_{idx}"
         with st.chat_message(role):
             if role == "assistant":
                 _render_assistant_message(message)
@@ -304,17 +369,16 @@ def main() -> None:
     # Chat input
     # -----------------------------------------------------------------------
     user_input: str | None = st.chat_input(
-        "Ask a question about glass bottle manufacturing..."
+        "Ask a question about your data..."
     )
 
     if user_input is not None:
-        # Validate: reject empty / whitespace-only questions
         question = user_input.strip()
         if not question:
             st.warning("Please enter a question.")
             st.stop()
 
-        # Truncate at 2000 characters as per requirement 1.1
+        # Truncate at 2000 characters
         if len(question) > 2000:
             question = question[:2000]
 

@@ -1,5 +1,5 @@
 """
-GlassBot Trino client.
+Polaris Trino client.
 
 Manages the connection to Trino and executes read-only SQL queries,
 returning a structured ``QueryResult``.  Results are truncated to

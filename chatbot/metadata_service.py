@@ -1,5 +1,5 @@
 """
-MetadataService — OpenMetadata integration for GlassBot.
+MetadataService — OpenMetadata integration for Polaris.
 
 Queries the OpenMetadata REST API to retrieve table metadata relevant to a
 user question.
@@ -10,11 +10,11 @@ Key behaviour:
   become a focused query like "production orders" that OpenMetadata can match.
 - When OpenMetadata returns no results for the extracted keywords, falls back
   to a broad search using each token individually.
-- If all searches return empty, returns a hardcoded fallback set of the known
-  glass-bottle business tables so the LLM always has schema context.
+- If all searches return empty, falls back to Trino information_schema
+  introspection to discover available tables dynamically.
 
 Error taxonomy:
-    ``MetadataNotFoundError``  — raised when even the fallback returns nothing.
+    ``MetadataNotFoundError``  — raised when no tables can be found at all.
     ``MetadataConnectivityError`` — raised on network / HTTP connectivity failure.
 """
 
@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 
@@ -43,117 +43,6 @@ _STOP_WORDS = {
     "number", "count", "total",
 }
 
-# Hardcoded fallback metadata for known glass-bottle tables.
-# Used when OpenMetadata search returns no results so the LLM always
-# has schema context.
-_FALLBACK_TABLES: list[TableMetadata] = [
-    TableMetadata(
-        fqn="mysql.trino_glassbottle.customer_orders",
-        name="customer_orders",
-        description="Customer sales orders for glass bottle products",
-        columns=[
-            ColumnInfo("order_id", "integer", "Unique order identifier"),
-            ColumnInfo("customer_name", "varchar", "Name of the customer"),
-            ColumnInfo("order_number", "varchar", "Order reference number"),
-            ColumnInfo("product_code", "varchar", "Glass bottle product code"),
-            ColumnInfo("quantity", "integer", "Number of bottles ordered"),
-            ColumnInfo("order_date", "date", "Date the order was placed"),
-            ColumnInfo("delivery_date", "date", "Date the order was delivered"),
-            ColumnInfo("status", "varchar",
-                       "Order status: Delivered, Pending, Processing, Cancelled"),
-        ],
-        tags=["GlassBottle", "Sales"],
-    ),
-    TableMetadata(
-        fqn="postgres.public.production_orders",
-        name="production_orders",
-        description="Internal production/manufacturing orders for glass bottles",
-        columns=[
-            ColumnInfo("production_id", "integer", "Unique production order identifier"),
-            ColumnInfo("order_number", "varchar", "Order reference number"),
-            ColumnInfo("product_code", "varchar", "Glass bottle product code"),
-            ColumnInfo("quantity", "integer", "Number of bottles to produce"),
-            ColumnInfo("machine_id", "varchar", "ID of the machine used"),
-            ColumnInfo("shift", "varchar", "Work shift: Morning, Afternoon, Night"),
-            ColumnInfo("production_date", "date", "Date of production"),
-            ColumnInfo("status", "varchar",
-                       "Production status: Completed, In Progress, Pending, Cancelled"),
-        ],
-        tags=["GlassBottle", "Production"],
-    ),
-    TableMetadata(
-        fqn="mongodb.trino_glassbottle.machine_sensor_logs",
-        name="machine_sensor_logs",
-        description="Real-time machine sensor logs from glass bottle production equipment",
-        columns=[
-            ColumnInfo("machineid", "varchar", "Machine identifier"),
-            ColumnInfo("productionid", "varchar", "Associated production order ID"),
-            ColumnInfo("temperature", "bigint", "Machine temperature reading"),
-            ColumnInfo("pressure", "bigint", "Machine pressure reading"),
-            ColumnInfo("speed", "bigint", "Machine speed reading"),
-            ColumnInfo("defects", "bigint", "Number of defects detected"),
-            ColumnInfo("timestamp", "varchar", "Timestamp of the log entry"),
-        ],
-        tags=["GlassBottle", "MachineLogs"],
-    ),
-    TableMetadata(
-        fqn="gsheets.default.trino_glassbottle_production_target",
-        name="trino_glassbottle_production_target",
-        description="Daily production targets from Google Sheets for glass bottle manufacturing",
-        columns=[
-            ColumnInfo("date", "varchar", "Production date"),
-            ColumnInfo("product code", "varchar", "Glass bottle product code"),
-            ColumnInfo("planned qty", "varchar", "Planned production quantity"),
-            ColumnInfo("actual qty", "varchar", "Actual production quantity achieved"),
-            ColumnInfo("supervisor", "varchar", "Supervisor name"),
-            ColumnInfo("remarks", "varchar", "Additional remarks or notes"),
-        ],
-        tags=["GlassBottle", "ProductionTarget"],
-    ),
-    TableMetadata(
-        fqn="redis.default.machine",
-        name="machine",
-        description="Real-time machine status from Redis cache (key-value format)",
-        columns=[
-            ColumnInfo("_key", "varchar", "Redis key"),
-            ColumnInfo("_value", "varchar", "JSON value with machine status data"),
-        ],
-        tags=["GlassBottle", "Redis", "RealTime"],
-    ),
-    TableMetadata(
-        fqn="redis.default.production",
-        name="production",
-        description="Live production counters and metrics from Redis cache (key-value format)",
-        columns=[
-            ColumnInfo("_key", "varchar", "Redis key"),
-            ColumnInfo("_value", "varchar", "JSON value with production metrics"),
-        ],
-        tags=["GlassBottle", "Redis", "RealTime"],
-    ),
-    TableMetadata(
-        fqn="redis.default.shift",
-        name="shift",
-        description="Current shift information from Redis cache (key-value format)",
-        columns=[
-            ColumnInfo("_key", "varchar", "Redis key"),
-            ColumnInfo("_value", "varchar", "JSON value with shift details"),
-        ],
-        tags=["GlassBottle", "Redis", "RealTime"],
-    ),
-    TableMetadata(
-        fqn="redis.default.dashboard",
-        name="dashboard",
-        description="Dashboard summary KPIs from Redis cache (key-value format)",
-        columns=[
-            ColumnInfo("_key", "varchar", "Redis key"),
-            ColumnInfo("_value", "varchar", "JSON value with dashboard KPIs"),
-        ],
-        tags=["GlassBottle", "Redis", "RealTime"],
-    ),
-]
-
-
-
 
 def _extract_keywords(question: str) -> str:
     """Extract meaningful keywords from a natural language question.
@@ -166,7 +55,6 @@ def _extract_keywords(question: str) -> str:
         "Give me completed production orders" → "completed production orders"
         "How many machines are running?"      → "machines running"
     """
-    # Remove punctuation except spaces
     cleaned = re.sub(r"[^\w\s]", " ", question.lower())
     tokens = [t for t in cleaned.split() if t and t not in _STOP_WORDS and len(t) > 2]
     if not tokens:
@@ -175,30 +63,40 @@ def _extract_keywords(question: str) -> str:
 
 
 class MetadataService:
-    """Fetches table metadata from OpenMetadata via its REST search API."""
+    """Fetches table metadata from OpenMetadata via its REST search API.
 
-    def __init__(self, config: Any) -> None:
+    When OpenMetadata returns no results, falls back to Trino
+    information_schema introspection if a Trino client is provided.
+    """
+
+    def __init__(self, config: Any, trino_client: Optional[Any] = None) -> None:
+        """
+        Args:
+            config: Application config with OPENMETADATA_URL and OPENMETADATA_API_TOKEN.
+            trino_client: Optional TrinoClient for fallback introspection.
+        """
         self._base_url: str = config.OPENMETADATA_URL.rstrip("/")
         self._token: str = config.OPENMETADATA_API_TOKEN
+        self._trino_client = trino_client
 
-    def search_tables(self, question: str, limit: int = 5) -> list[TableMetadata]:
+    def search_tables(self, question: str, limit: int = 10) -> list[TableMetadata]:
         """Search OpenMetadata for tables relevant to *question*.
 
         Search strategy (in order):
         1. Search with extracted keywords from the question.
         2. If empty, search for each individual keyword token.
-        3. If still empty, return the hardcoded fallback tables.
+        3. If still empty, fall back to Trino information_schema introspection.
+        4. If that also fails, raise MetadataNotFoundError.
 
         Args:
             question: The user's natural language question.
-            limit:    Maximum number of tables to return (default: 5).
+            limit:    Maximum number of tables to return (default: 10).
 
         Returns:
-            A list of ``TableMetadata`` objects (at most *limit* items).
+            A list of ``TableMetadata`` objects.
 
         Raises:
-            MetadataNotFoundError:     Only raised if fallback is also empty
-                                       (should never happen in practice).
+            MetadataNotFoundError:     When no tables can be found anywhere.
             MetadataConnectivityError: On network / HTTP connectivity failure.
         """
         keywords = _extract_keywords(question)
@@ -221,17 +119,52 @@ class MetadataService:
                     )
                     break
 
-        # Attempt 3: hardcoded fallback
+        # Attempt 3: broad search with wildcard
         if not hits:
-            logger.warning(
-                "No OpenMetadata results for %r — using hardcoded fallback tables",
+            hits = self._search("*", limit)
+
+        if hits:
+            tables = [_parse_table(hit["_source"]) for hit in hits]
+            logger.debug("Found %d table(s) for question %r", len(tables), question)
+            return tables
+
+        # Attempt 4: Trino information_schema introspection
+        if self._trino_client:
+            logger.info(
+                "No OpenMetadata results for %r — falling back to Trino introspection",
                 question,
             )
-            return list(_FALLBACK_TABLES)
+            introspected = self._introspect_trino(limit)
+            if introspected:
+                return introspected
 
-        tables = [_parse_table(hit["_source"]) for hit in hits]
-        logger.debug("Found %d table(s) for question %r", len(tables), question)
-        return tables
+        # Nothing found anywhere
+        logger.warning("No table metadata found for question: %r", question)
+        raise MetadataNotFoundError(
+            "No tables found. Please configure data sources in the Data Sources page."
+        )
+
+    def get_all_tables(self, limit: int = 50) -> list[TableMetadata]:
+        """Retrieve all available tables from OpenMetadata (or Trino fallback).
+
+        Used by the dynamic prompt builder to get the full schema context.
+
+        Args:
+            limit: Maximum number of tables to return.
+
+        Returns:
+            A list of all discoverable TableMetadata objects.
+        """
+        # Try OpenMetadata wildcard search first
+        hits = self._search("*", limit)
+        if hits:
+            return [_parse_table(hit["_source"]) for hit in hits]
+
+        # Fallback to Trino introspection
+        if self._trino_client:
+            return self._introspect_trino(limit)
+
+        return []
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -264,6 +197,192 @@ class MetadataService:
 
         return _extract_hits(response.json())
 
+    def _introspect_trino(self, limit: int) -> list[TableMetadata]:
+        """Discover tables directly from Trino's information_schema.
+
+        Queries each catalog's information_schema to find available tables
+        and their columns. Only queries schemas that match configured data
+        sources to avoid discovering irrelevant tables.
+        """
+        if not self._trino_client:
+            return []
+
+        try:
+            # Load configured data sources to know which schemas are relevant
+            configured_schemas = self._get_configured_schemas()
+
+            # First, get the list of catalogs
+            catalogs_result = self._trino_client.execute(
+                "SHOW CATALOGS", row_limit=50
+            )
+            catalogs = [
+                row.get("Catalog", "")
+                for row in catalogs_result.rows
+                if row.get("Catalog", "") not in ("system", "")
+            ]
+
+            if not catalogs:
+                logger.info("No user catalogs found in Trino")
+                return []
+
+            tables: list[TableMetadata] = []
+            for catalog in catalogs:
+                try:
+                    # Filter to only the configured schema for this catalog
+                    schema_filter = configured_schemas.get(catalog)
+                    if schema_filter:
+                        tables_sql = (
+                            f"SELECT table_schema, table_name "
+                            f"FROM {catalog}.information_schema.tables "
+                            f"WHERE table_schema = '{schema_filter}' "
+                            f"LIMIT {limit}"
+                        )
+                    else:
+                        tables_sql = (
+                            f"SELECT table_schema, table_name "
+                            f"FROM {catalog}.information_schema.tables "
+                            f"WHERE table_schema != 'information_schema' "
+                            f"LIMIT {limit}"
+                        )
+                    result = self._trino_client.execute(tables_sql, row_limit=limit)
+
+                    for row in result.rows:
+                        schema = row.get("table_schema", "")
+                        table_name = row.get("table_name", "")
+                        fqn = f"{catalog}.{schema}.{table_name}"
+
+                        # Get columns for this table
+                        columns = self._get_columns(catalog, schema, table_name)
+
+                        # If no columns found (e.g., Redis connector), use default key-value schema
+                        if not columns:
+                            columns = [
+                                ColumnInfo("_key", "varchar", "Key identifier"),
+                                ColumnInfo("_value", "varchar", "JSON value"),
+                            ]
+
+                        # Get description — enrich Redis/key-value tables with
+                        # sample data so the LLM knows what's inside
+                        description = self._get_table_description(
+                            catalog, schema, table_name, columns
+                        )
+
+                        tables.append(TableMetadata(
+                            fqn=fqn,
+                            name=table_name,
+                            description=description,
+                            columns=columns,
+                            tags=[],
+                            relationships=[],
+                        ))
+
+                        if len(tables) >= limit:
+                            break
+                except Exception as exc:
+                    logger.debug("Failed to introspect catalog %s: %s", catalog, exc)
+                    continue
+
+                if len(tables) >= limit:
+                    break
+
+            logger.info("Introspected %d table(s) from Trino", len(tables))
+            return tables
+
+        except Exception as exc:
+            logger.error("Trino introspection failed: %s", exc)
+            return []
+
+    def _get_table_description(
+        self, catalog: str, schema: str, table_name: str, columns: list[ColumnInfo]
+    ) -> str | None:
+        """Generate a description for a table, especially for key-value stores.
+
+        For Redis-style tables (columns are just _key and _value), samples
+        actual data to create a meaningful description the LLM can use.
+        """
+        # Check if this is a key-value table (Redis pattern)
+        col_names = {c.name for c in columns}
+        if col_names == {"_key", "_value"} and self._trino_client:
+            try:
+                sample = self._trino_client.execute(
+                    f"SELECT _key, _value FROM {catalog}.{schema}.{table_name} LIMIT 3",
+                    row_limit=3,
+                )
+                if sample.rows:
+                    keys = [r.get("_key", "") for r in sample.rows]
+                    # Show sample keys and first value for context
+                    first_value = sample.rows[0].get("_value", "")
+                    if len(first_value) > 200:
+                        first_value = first_value[:200] + "..."
+                    return (
+                        f"REAL-TIME Redis key-value table '{table_name}' — "
+                        f"USE THIS for current/live status queries about '{table_name}'. "
+                        f"Columns: _key (varchar), _value (varchar containing JSON). "
+                        f"Sample keys: {keys}. "
+                        f"Sample JSON value: {first_value}. "
+                        f"Query pattern: SELECT _key, _value FROM {catalog}.{schema}.{table_name} "
+                        f"WHERE _value LIKE '%\"status\":\"Running\"%' LIMIT 100"
+                    )
+            except Exception:
+                pass
+
+        return None
+
+    def _get_columns(
+        self, catalog: str, schema: str, table_name: str
+    ) -> list[ColumnInfo]:
+        """Get column information for a specific table from Trino."""
+        if not self._trino_client:
+            return []
+
+        try:
+            col_sql = (
+                f"SELECT column_name, data_type "
+                f"FROM {catalog}.information_schema.columns "
+                f"WHERE table_schema = '{schema}' AND table_name = '{table_name}' "
+                f"ORDER BY ordinal_position"
+            )
+            result = self._trino_client.execute(col_sql, row_limit=100)
+            return [
+                ColumnInfo(
+                    name=row.get("column_name", ""),
+                    data_type=row.get("data_type", ""),
+                    description=None,
+                )
+                for row in result.rows
+            ]
+        except Exception as exc:
+            logger.debug("Failed to get columns for %s.%s.%s: %s", catalog, schema, table_name, exc)
+            return []
+
+    def _get_configured_schemas(self) -> dict[str, str]:
+        """Load configured data sources and return a catalog→schema mapping.
+
+        Returns:
+            Dict mapping catalog_name → target_schema (from datasources.json).
+            Empty string value means "all schemas".
+        """
+        try:
+            import json
+            from pathlib import Path
+
+            data_file = Path(__file__).parent.parent / "data" / "datasources.json"
+            if not data_file.exists():
+                return {}
+
+            with open(data_file, "r") as f:
+                data = json.load(f)
+
+            mapping = {}
+            for ds in data.get("datasources", []):
+                catalog_name = ds.get("name", "")
+                database = ds.get("database", "")
+                if catalog_name and database:
+                    mapping[catalog_name] = database
+            return mapping
+        except Exception:
+            return {}
+
 
 def _extract_hits(data: dict[str, Any]) -> list[dict[str, Any]]:
     """Pull the list of hit documents from an OpenMetadata search response."""
@@ -288,11 +407,45 @@ def _parse_table(source: dict[str, Any]) -> TableMetadata:
         for tag_obj in source.get("tags", [])
         if isinstance(tag_obj, dict) and tag_obj.get("tagFQN")
     ]
+
+    # Extract a clean 3-part FQN for Trino from the OpenMetadata FQN
+    # OM uses 4-part: service.database.schema.table
+    # We need: catalog.schema.table (where catalog = the Trino catalog name)
+    raw_fqn = source.get("fullyQualifiedName", "")
+    fqn = _normalize_fqn(raw_fqn, source.get("name", ""))
+
     return TableMetadata(
-        fqn=source.get("fullyQualifiedName", ""),
+        fqn=fqn,
         name=source.get("name", ""),
         description=source.get("description") or None,
         columns=columns,
         tags=tags,
         relationships=[],
     )
+
+
+def _normalize_fqn(om_fqn: str, table_name: str) -> str:
+    """Convert an OpenMetadata FQN to a Trino-compatible 3-part FQN.
+
+    OpenMetadata uses: service_name.database.schema.table (4 parts)
+    Trino needs:       catalog.schema.table (3 parts)
+
+    In Polaris, the service_name IS the Trino catalog name (since we name
+    the OM service the same as the Trino catalog). So:
+    - parts[0] = service_name = Trino catalog
+    - parts[1] = database (OM concept, often same as schema)
+    - parts[2] = schema
+    - parts[3] = table
+
+    Trino FQN = parts[0].parts[2].parts[3]  (catalog.schema.table)
+    """
+    parts = om_fqn.split(".")
+    if len(parts) == 4:
+        # service.database.schema.table → service.schema.table
+        # service_name = Trino catalog name
+        return f"{parts[0]}.{parts[2]}.{parts[3]}"
+    elif len(parts) == 3:
+        return om_fqn
+    else:
+        # Fallback — return as-is
+        return om_fqn
